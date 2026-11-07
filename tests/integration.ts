@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { KycCase } from "../src/lib/kyc-types";
 
 const dir = mkdtempSync(join(tmpdir(), "tools-integration-"));
 const port = Number(process.env.TEST_PORT || 3107);
@@ -83,7 +84,7 @@ try {
 
   const admin = await login("user-admin");
   const team = await request("/api/users", { cookie: admin });
-  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 4);
+  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 5);
   assert.equal(team.headers.get("cache-control"), "no-store");
   assert.match(await (await request("/team", { cookie: admin })).text(), /Workspace members/);
   const audit = await request("/api/audit", { cookie: admin });
@@ -201,6 +202,99 @@ try {
   const refundsAfterRestart = await (await request("/api/refunds", { cookie: auditAdmin })).json();
   assert.deepEqual(refundsAfterRestart.refunds, rows);
   console.log("PASS refunds: role boundaries, threshold/quorum, duplicate and terminal decisions, concurrency, grouped audits, SSR, and persistence");
+
+  assert.equal((await request("/kyc")).status, 307);
+  assert.equal((await request("/api/kyc")).status, 401);
+  assert.equal((await request("/api/kyc", { method: "POST", body: {} })).status, 401);
+  const analyst = await login("user-agent-2");
+  const intake = { customer: "Fictional KYC Customer", country: "ES", documentType: "passport", riskScore: 70 };
+  for (const cookie of [refundReviewer, auditAdmin]) assert.equal((await request("/api/kyc", { method: "POST", cookie, body: intake })).status, 403);
+  assert.equal((await request("/api/kyc", { method: "POST", cookie: afterRestart, requestOrigin: "https://elsewhere.example", body: intake })).status, 403);
+  assert.equal((await request("/api/kyc", { method: "POST", cookie: afterRestart, rawBody: "{" })).status, 400);
+  for (const riskScore of [-1, 101, "70", null]) assert.equal((await request("/api/kyc", { method: "POST", cookie: afterRestart, body: { ...intake, riskScore } })).status, 400);
+  async function submitKyc(riskScore: number) {
+    const response = await request("/api/kyc", { method: "POST", cookie: afterRestart, body: { ...intake, riskScore, requestedBy: "user-admin", role: "reviewer", status: "approved", requiredApprovals: 1, assignedTo: "user-admin" } });
+    assert.equal(response.status, 201);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    return response.json();
+  }
+  async function kycAction(id: string, cookie: string | undefined, action: string, note = "Reviewed fictional vendor results.") {
+    return request(`/api/kyc/${id}/actions`, { method: "POST", cookie, body: { action, note, actorId: "user-admin", role: "reviewer", id: "00000000-0000-0000-0000-000000000000" } });
+  }
+  async function kycRows(): Promise<KycCase[]> {
+    const response = await request("/api/kyc", { cookie: auditAdmin });
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    return (await response.json()).cases;
+  }
+  const kycHigh = await submitKyc(70);
+  const kycLow = await submitKyc(69.99);
+  const highId = kycHigh.result.id;
+  assert.equal((await kycAction(highId, undefined, "claim")).status, 401);
+  assert.equal((await kycAction(highId, auditAdmin, "claim")).status, 403);
+  assert.equal((await kycAction(highId, afterRestart, "claim")).status, 403);
+  assert.equal((await kycAction(highId, analyst, "approve")).status, 409);
+  assert.equal((await kycAction(highId, analyst, "reset")).status, 400);
+  assert.equal((await kycAction("bad-id", analyst, "claim")).status, 400);
+  assert.equal((await kycAction("00000000-0000-0000-0000-000000000000", analyst, "claim")).status, 404);
+  assert.equal((await request(`/api/kyc/${highId}/actions`, { method: "POST", cookie: analyst, requestOrigin: "https://elsewhere.example", body: { action: "claim" } })).status, 403);
+  assert.equal((await request(`/api/kyc/${highId}/actions`, { method: "POST", cookie: analyst, rawBody: "{" })).status, 400);
+  assert.equal((await kycAction(highId, analyst, "claim")).status, 200);
+  assert.equal((await kycAction(highId, refundReviewer, "claim")).status, 409);
+  for (const action of ["release", "approve", "reject", "escalate"]) assert.equal((await kycAction(highId, refundReviewer, action)).status, 409);
+  for (const action of ["approve", "reject", "escalate"]) assert.equal((await kycAction(highId, analyst, action, " ")).status, 400);
+  const kycFirst = await kycAction(highId, analyst, "approve");
+  assert.equal(kycFirst.status, 200);
+  const kycFirstResult = await kycFirst.json();
+  const partial = (await kycRows()).find((row) => row.id === highId)!;
+  assert.equal(partial.approvalCount, 1); assert.equal(partial.status, "pending"); assert.equal(partial.requiredApprovals, 2);
+  assert.equal(partial.requestedBy, "user-agent"); assert.equal(partial.assignedTo, null);
+  assert.equal(partial.history.at(-1)!.actorId, "user-agent-2");
+  assert.equal((await kycAction(highId, analyst, "claim")).status, 409);
+  assert.equal((await kycAction(highId, refundReviewer, "claim")).status, 200);
+  assert.equal((await kycAction(highId, refundReviewer, "approve")).status, 200);
+  for (const action of ["claim", "approve", "reject", "escalate", "release"]) assert.equal((await kycAction(highId, secondReviewer, action)).status, 409);
+  assert.equal((await kycAction(kycLow.result.id, analyst, "claim")).status, 200);
+  assert.equal((await kycAction(kycLow.result.id, analyst, "approve")).status, 200);
+  assert.equal((await kycRows()).find((row) => row.id === kycLow.result.id)!.status, "approved");
+
+  const escalated = (await submitKyc(30)).result.id;
+  assert.equal((await kycAction(escalated, refundReviewer, "claim")).status, 200);
+  assert.equal((await kycAction(escalated, refundReviewer, "escalate", "Vendor mismatch requires another senior.")).status, 200);
+  assert.equal((await kycAction(escalated, refundReviewer, "claim")).status, 403);
+  assert.equal((await kycAction(escalated, analyst, "claim")).status, 403);
+  assert.equal((await kycAction(escalated, secondReviewer, "claim")).status, 200);
+  assert.equal((await kycAction(escalated, secondReviewer, "reject")).status, 200);
+  const raceId = (await submitKyc(80)).result.id;
+  const kycClaims = await Promise.all([kycAction(raceId, refundReviewer, "claim"), kycAction(raceId, secondReviewer, "claim")]);
+  assert.deepEqual(kycClaims.map((response) => response.status).sort(), [200, 409]);
+  const raceActor = kycClaims[0].status === 200 ? refundReviewer : secondReviewer;
+  const releases = await kycAction(raceId, raceActor, "release");
+  assert.equal(releases.status, 200);
+  const beforeDenials = (await (await request("/api/audit", { cookie: auditAdmin })).json()).entries[0].id;
+  assert.equal((await kycAction(raceId, auditAdmin, "claim")).status, 403);
+  assert.equal((await kycAction(raceId, analyst, "approve")).status, 409);
+  assert.equal((await (await request("/api/audit", { cookie: auditAdmin })).json()).entries[0].id, beforeDenials);
+  for (const cookie of [afterRestart, analyst, refundReviewer, auditAdmin]) assert.equal((await request("/kyc", { cookie })).status, 200);
+  assert.match(await (await request("/kyc", { cookie: afterRestart })).text(), /Add signup verification/);
+  assert.doesNotMatch(await (await request("/kyc", { cookie: auditAdmin })).text(), /Add signup verification/);
+  assert.equal((await request("/api/kyc", { method: "PUT", cookie: afterRestart, body: intake })).status, 405);
+  assert.equal((await request(`/api/kyc/${highId}/actions`, { method: "DELETE", cookie: refundReviewer })).status, 405);
+  const kycAudit = [];
+  cursor = null;
+  do {
+    const page = await (await request(`/api/audit${cursor ? `?before=${cursor}` : ""}`, { cookie: auditAdmin })).json();
+    kycAudit.push(...page.entries); cursor = page.nextCursor;
+  } while (cursor);
+  const intakeAudit = kycAudit.filter((entry) => entry.mutationId === kycHigh.mutationId);
+  assert.deepEqual(intakeAudit.map((entry) => entry.table).sort(), ["approval_requests", "kyc_cases", "kyc_events"]);
+  const kycDecisionAudit = kycAudit.filter((entry) => entry.mutationId === kycFirstResult.mutationId);
+  assert.equal(kycDecisionAudit.length, 4);
+  assert.ok(kycDecisionAudit.every((entry) => entry.actor.id === "user-agent-2" && entry.actor.role === "agent"));
+  const kycBeforeRestart = await kycRows();
+  assert.deepEqual(kycBeforeRestart.find((row) => row.id === highId)!.history.map((entry) => entry.action), ["submit", "claim", "approve", "claim", "approve"]);
+  await stop(); await start(true);
+  assert.deepEqual(await kycRows(), kycBeforeRestart);
+  console.log("PASS KYC: guarded intake, claims, senior second approval, self-escalation denial, reasons/history, concurrency, grouped audits, SSR, and persistence");
   console.log("All HTTP integration checks passed.");
 } finally {
   await stop();

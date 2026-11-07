@@ -153,4 +153,20 @@ textarea[readonly] { background: #f8faf5; }
 .refund-queue .section-heading { margin-bottom: 22px; }.refund-queue .section-heading svg { color: #96a486; }.refund-filters { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 18px; }.refund-filters button { display: flex; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 6px; padding: 9px 12px; background: transparent; color: #839077; text-transform: capitalize; font-size: 12px; }.refund-filters button[aria-pressed="true"] { color: var(--green); background: #edf3e9; border-color: #dfe8d9; }.refund-filters span { background: #e4eadf; border-radius: 4px; padding: 2px 6px; font-size: 10px; }
 .refund-table { min-width: 830px; }.refund-table th { color: #8c9980; font-weight: 500; font-size: 11px; padding: 20px 12px; border-bottom: 1px solid var(--line); }.refund-table td { padding: 22px 12px; vertical-align: top; color: #637457; font-size: 12px; border-bottom: 1px solid #edf0e8; }.refund-table tr:last-child td { border: 0; }.refund-table td:first-child { min-width: 200px; max-width: 280px; overflow-wrap: anywhere; }.refund-table strong { font-weight: 550; color: #3f5535; }.refund-table small { display: block; font-size: 10px; margin-top: 9px; color: #97a18c; line-height: 1.6; }.refund-table .refund-reason-text { font-size: 12px; line-height: 1.8; margin: 9px 0; white-space: pre-wrap; }.refund-table summary { font-size: 10px; margin-top: 15px; cursor: pointer; }.refund-table details p, .refund-table details li { font-size: 11px; line-height: 1.8; }.refund-table details ul { margin: 12px 0 0; padding-left: 14px; }.refund-table details li { margin-bottom: 10px; }.refund-table details small { margin-top: 4px; }
 .refund-status { display: inline-flex; border-radius: 5px; padding: 5px 8px; font-size: 10px; text-transform: capitalize; }.refund-status.pending { background: #faf0d8; color: #916c29; }.refund-status.approved { background: #e8f2e2; color: #527446; }.refund-status.rejected { background: #f8e7e2; color: #99584c; }.refund-actions { display: flex; flex-wrap: wrap; gap: 8px; max-width: 100px; }.refund-action-note { font-size: 11px; color: #8b987f; }
-@media (max-width: 560px) { .refund-fields { grid-template-columns: 1fr; }.refund-submit { align-items: flex-start; flex-direction: column; }.refund-policy { padding: 18px; }.refund-filters { gap: 3px; }.refund-filters button { padding: 8px; font-size: 11px; } }
+.kyc-intake > summary { cursor: pointer; display: flex; align-items: center; gap: 10px; font-size: 14px; color: #3f5535; }
+.kyc-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.kyc-fields select { width: 100%; border: 1px solid #dfe5d6; border-radius: 6px; padding: 11px; background: #fff; color: #3f5535; font: inherit; }
+.kyc-detail { margin-top: 24px; padding: 28px; }
+.kyc-detail .section-heading p { overflow-wrap: anywhere; }
+.kyc-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 28px 0; }
+.kyc-facts dt, .kyc-review label { color: #7b8970; font-size: 11px; margin-bottom: 8px; }
+.kyc-facts dd { margin: 0; color: #3f5535; font-size: 12px; overflow-wrap: anywhere; }
+.kyc-review textarea { width: 100%; display: block; margin: 10px 0; padding: 12px; border: 1px solid #dfe5d6; border-radius: 6px; font: inherit; font-size: 13px; resize: vertical; }
+.kyc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 28px; }
+.kyc-detail h3 { font-size: 14px; margin-top: 28px; color: #3f5535; }
+.kyc-history { padding-left: 20px; color: #637457; font-size: 12px; }
+.kyc-history li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.kyc-history small { display: block; margin-top: 7px; color: #7b8970; font-size: 10px; }
+.kyc-history p { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; }
+@media (max-width: 800px) { .kyc-fields, .kyc-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .refund-fields, .kyc-facts { grid-template-columns: 1fr; }.refund-submit { align-items: flex-start; flex-direction: column; }.refund-policy { padding: 18px; }.refund-filters { gap: 3px; flex-wrap: wrap; }.refund-filters button { padding: 8px; font-size: 11px; }.kyc-detail { padding: 18px; } }

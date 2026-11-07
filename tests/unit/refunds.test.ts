@@ -167,7 +167,7 @@ describe("refund requests using shared approvals and atomic auditing", () => {
     const reopened = new Store(path);
     try {
       expect(await reopened.refunds()).toEqual(before);
-      expect((await reopened.users()).length).toBe(4);
+      expect((await reopened.users()).length).toBe(5);
       await review(reopened, id, "user-reviewer-2");
       expect((await reopened.refunds())[0].status).toBe("approved");
     } finally { reopened.close(); }
