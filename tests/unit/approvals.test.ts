@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createApproval, decideApproval, type ApprovalPolicy, type Decision } from "../../src/lib/approvals";
 import type { MutationContext } from "../../src/lib/mutation";
 
-test("a KYC-style policy reuses persisted approval logic with a different quorum and permission", async () => {
+test("a KYC-style policy reuses shared approval operations with a different quorum and permission", async () => {
   const policy: ApprovalPolicy<{ risk: string }> = { key: "kyc-test", version: 7, resourceType: "kyc-test", permission: "note:write", requiredApprovals: ({ risk }) => risk === "high" ? 3 : 1 };
   let request: Record<string, unknown>;
   const decisions: { reviewer_id: string; decision: Decision }[] = [];
@@ -17,6 +17,7 @@ test("a KYC-style policy reuses persisted approval logic with a different quorum
     },
   };
   await createApproval(context, policy, "customer-verification", { risk: "high" });
+  policy.requiredApprovals = () => 1;
   for (let index = 1; index <= 3; index++) {
     context.actor = { ...context.actor, id: `reviewer-${index}` };
     expect((await decideApproval(context, policy, "customer-verification", "approve")).status).toBe(index === 3 ? "approved" : "pending");
