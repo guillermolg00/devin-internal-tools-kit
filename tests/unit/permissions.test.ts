@@ -5,7 +5,7 @@ describe("server authorization policy", () => {
   const expected = {
     agent: ["workspace:read"],
     reviewer: ["workspace:read", "note:write"],
-    admin: ["workspace:read", "note:write", "users:read"],
+    admin: ["workspace:read", "note:write", "users:read", "audit:read"],
   };
   for (const role of roles) {
     const user: User = { id: "test", name: "Test", email: "test@example.test", role };

@@ -13,10 +13,8 @@ export async function PUT(request: Request) {
   try {
     checkOrigin(request);
     const user = await requirePermission("note:write");
-    const body = await request.json();
-    if (typeof body?.content !== "string" || !body.content.trim() || body.content.trim().length > 1000) {
-      return json({ error: "Write a note between 1 and 1,000 characters." }, 400);
-    }
-    return json(await getStore().updateNote(body.content.trim(), user.id));
+    const store = getStore();
+    await store.mutate("workspace.note.update", user.id, await request.json());
+    return json(await store.note());
   } catch (error) { return apiError(error); }
 }
