@@ -2,7 +2,7 @@
 
 A small shared foundation for code-based internal tools, built with Next.js App Router, TypeScript, and local SQLite. Includes a workspace shell, seeded demo identities, server-side role-based permissions, and a persisted note as a minimal read/write example.
 
-The first tool is a refunds dashboard with audited, reusable approvals. The KYC queue and feature-flag admin remain **future modules**. No payments are issued by this app.
+Includes a refunds dashboard and KYC review queue with audited, reusable approvals. Feature-flag admin remains a **future module**. No payments are issued by this app.
 
 ## Run
 
@@ -21,6 +21,7 @@ Optional configuration is documented in `.env.example`. Set `DATABASE_PATH` to u
 | Identity | Role | Workspace / note read | Note write | Team directory |
 | --- | --- | --- | --- | --- |
 | Alex Morgan | agent | Yes | No | No |
+| Casey Chen | agent | Yes | No | No |
 | Sam Rivera | reviewer | Yes | Yes | No |
 | Priya Shah | reviewer | Yes | Yes | No |
 | Jordan Lee | admin | Yes | Yes | Yes |
@@ -28,6 +29,8 @@ Optional configuration is documented in `.env.example`. Set `DATABASE_PATH` to u
 Only admins can also browse `/audit` and `GET /api/audit`.
 
 All three roles can view refunds. Only agents submit requests; only reviewers decide. Admins have read/audit access, not an approval override. The second reviewer is added automatically to existing databases without changing existing users or roles.
+
+For KYC, agents are analysts and the reviewer role is explicitly granted senior KYC review. Both can claim and decide cases; only agents submit vendor results. Admins have read/audit access only. Casey is a second analyst so a different person can review Alex’s intake. New demo users are added without changing existing identities or roles.
 
 Switch users from the top-right identity menu or sign out to return to the picker. The access page includes the policy matrix and a button that calls the admin-only API directly.
 
@@ -47,9 +50,9 @@ Before production, replace `/api/session` and the seeded picker with a real iden
 ## Shared structure
 
 ```text
-src/app/(workspace)/     Shared layout, overview, refunds, permissions, team, audit
+src/app/(workspace)/     Shared layout, overview, refunds, KYC, permissions, team, audit
 src/app/login/           Explicit fake-login picker
-src/app/api/             Guarded session, note, user, refund, and audit endpoints
+src/app/api/             Guarded session, note, user, refund, KYC, and audit endpoints
 src/components/          Navigation, role switcher, note editor, permission probe
 src/lib/permissions.ts   Typed roles, permission map, can(), authorize()
 src/lib/auth.ts          Server-only session lookup and request/page guards
@@ -59,12 +62,13 @@ src/lib/mutations.ts     Typed business mutation registry and input validation
 src/lib/mutation.ts      Internal transactional capabilities and mutation errors
 src/lib/approvals.ts     Shared policy-driven approval operations and transitions
 src/lib/refunds.ts       Refund policy, exact USD validation, and named operations
+src/lib/kyc.ts           Risk-based policy, claims, escalation, and case history
 src/lib/http.ts          Same-origin mutation check and consistent API errors
 tests/unit/              Policy, seeding, session, and persistence regression tests
 tests/integration.ts     Real HTTP checks against a production build
 ```
 
-SQLite is accessed with `@libsql/client` using a local `file:` URL; **no Turso account or network database is used**. Queries are parameterized. Initialization applies audit schema version 1 and approval/refund schema version 2, generating table protections transactionally. Existing notes become one explicitly labelled system baseline; no old values or actors are invented. Fresh notes are recorded as system seeds. Reopening the database neither reseeds nor duplicates the baseline. Future structural table changes still need their own migrations.
+SQLite is accessed with `@libsql/client` using a local `file:` URL; **no Turso account or network database is used**. Queries are parameterized. Initialization applies audit schema version 1, approval/refund schema version 2, and KYC schema version 3, generating table protections transactionally. Existing notes become one explicitly labelled system baseline; no old values or actors are invented. Fresh notes are recorded as system seeds. Reopening the database neither reseeds nor duplicates the baseline. Future structural table changes still need their own migrations.
 
 ## Refunds and shared approvals
 
@@ -86,6 +90,25 @@ Shared tables `approval_requests` and `approval_decisions` store workflow state 
 - `POST /api/refunds`: agent only; e.g. `{ "customer": "Customer 42", "amount": "500.01", "reason": "Duplicate charge" }`. Amount is a decimal **string**, not a JSON float. Returns `201` with `result.id` and `mutationId`.
 - `POST /api/refunds/:id/decisions`: reviewer only; `{ "decision": "approve" }` or `{ "decision": "reject" }`. The actor comes from the session, and the target ID from the URL. Client-supplied identities, status, and quorum are not trusted.
 - All writes require same-origin requests. There are no request-edit/delete or decision-edit/delete endpoints. These are approval records, **not payment execution**.
+
+## KYC review queue
+
+Open `/kyc`. The queue shows customer name, two-letter country code, document type, vendor risk score, assignment, status, and approval progress. Filter pending, escalated, assigned-to-me, approved, rejected, or all cases. Open a case to inspect its immutable intake details and full chronological history. Refresh to see another browser’s changes.
+
+- **Below 70:** one approval completes review. **70–100 inclusive:** two distinct approvals are required; the second must have `kyc:senior-review` (the existing reviewer role). A senior first approval does not bypass the second-person requirement.
+- Analysts and senior reviewers must **claim** a pending case before acting. Claims are exclusive and audited. The owner can release a case without a decision. A partial approval releases the case for a different senior reviewer; terminal cases are locked.
+- Approve, reject, and escalate require a reason. Rejection is final, including after a partial approval. Escalation is not an approval or rejection: it releases the claim and routes the still-pending case to senior review, even for low scores. High-risk escalations still require two approvals.
+- Anyone who has **ever escalated** a case cannot pick it up or approve it, even after a role change or another escalation. The intake submitter cannot review their own case, and a reviewer can approve/reject only once. Roles and eligibility are rechecked inside the transaction; admins have no override.
+- Every submission, claim, release, escalation and decision records an ordered case event with timestamp, reason, and actor name/role **at the time**. Approval decisions also use the shared engine. All affected rows and before/after audits commit under one mutation ID or roll back together. There are no intake-edit, history-edit, or delete endpoints.
+
+### KYC intake and API
+
+This repo has no customer-signup system or vendor client. `POST /api/kyc` is the authenticated intake adapter to call when signup verification results are available; the “Add signup verification” form exercises it with fictional data. It does **not** fetch vendor scores, accept document uploads, or install an external webhook. Production integration must use trusted service authentication, authenticated vendor results, and idempotent vendor/customer references rather than expose this demo endpoint to customers.
+
+- `GET /api/kyc`: all roles; returns `{ cases }` with full case history, newest cases first and events in sequence order.
+- `POST /api/kyc`: agent only; `{ "customer": "Fictional Customer", "country": "ES", "documentType": "passport", "riskScore": 70 }`. Document types: `passport`, `national_id`, `driving_licence`. Risk must be a numeric, finite value from 0 to 100; decimal scores are supported. Returns `201` with `result.id` and `mutationId`. Actor, quorum, assignment, and status cannot be supplied by the caller.
+- `POST /api/kyc/:id/actions`: agent/reviewer; `{ "action": "claim" }`, `{ "action": "release" }`, or `{ "action": "approve" | "reject" | "escalate", "note": "Reason, 1–1000 characters" }`. Eligibility is resource- and stage-specific, not just role-based.
+- Every API response is `no-store`; mutations require the same Origin and a server session. Invalid input returns `400`, denied access `401`/`403`, missing cases `404`, and claim/finality conflicts `409`. Failed attempts create no audit noise.
 
 ## Atomic business auditing
 

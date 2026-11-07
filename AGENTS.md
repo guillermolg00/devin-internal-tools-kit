@@ -1,6 +1,6 @@
 # Working in this repository
 
-Next.js App Router + TypeScript + local SQLite. Tools share one app, shell, sessions, permissions, audit path, and approval engine. Follow [the new-tool playbook](docs/new-app-playbook.md); refunds is the working example, while KYC and feature flags are placeholders.
+Next.js App Router + TypeScript + local SQLite. Tools share one app, shell, sessions, permissions, audit path, and approval engine. Follow [the new-tool playbook](docs/new-app-playbook.md); refunds is the basic working example, KYC adds claims/escalation and senior-review eligibility, and feature flags is a placeholder.
 
 ## Run and verify
 

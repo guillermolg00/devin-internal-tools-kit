@@ -3,9 +3,9 @@ import { AccessError, authorize, can, permissions, roles, type Permission, type 
 
 describe("server authorization policy", () => {
   const expected = {
-    agent: ["workspace:read", "refunds:read", "refunds:create"],
-    reviewer: ["workspace:read", "note:write", "refunds:read", "refunds:review"],
-    admin: ["workspace:read", "note:write", "users:read", "audit:read", "refunds:read"],
+    agent: ["workspace:read", "refunds:read", "refunds:create", "kyc:read", "kyc:create", "kyc:review"],
+    reviewer: ["workspace:read", "note:write", "refunds:read", "refunds:review", "kyc:read", "kyc:review", "kyc:senior-review"],
+    admin: ["workspace:read", "note:write", "users:read", "audit:read", "refunds:read", "kyc:read"],
   };
   for (const role of roles) {
     const user: User = { id: "test", name: "Test", email: "test@example.test", role };
@@ -22,8 +22,10 @@ describe("server authorization policy", () => {
     }
   }
   test("anonymous and unknown roles fail closed", () => {
-    expect(can(null, "workspace:read")).toBe(false);
-    expect(can({ role: "invented" } as unknown as User, "workspace:read")).toBe(false);
+    for (const permission of Object.keys(permissions) as Permission[]) {
+      expect(can(null, permission)).toBe(false);
+      expect(can({ role: "invented" } as unknown as User, permission)).toBe(false);
+    }
     try { authorize(null, "workspace:read"); throw new Error("Expected authorization failure"); }
     catch (error) { expect((error as AccessError).status).toBe(401); }
   });

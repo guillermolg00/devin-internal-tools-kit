@@ -11,6 +11,7 @@ export type ApprovalPolicy<Facts> = {
   resourceType: string;
   permission: Permission;
   requiredApprovals(facts: Facts): number;
+  validateDecision?(context: MutationContext, review: { resourceId: string; decision: Decision; priorApprovals: number; requiredApprovals: number }): Promise<void>;
 };
 
 export function transitionApproval(
@@ -48,6 +49,10 @@ export async function decideApproval<Facts>(context: MutationContext, policy: Ap
     status: request.status as ApprovalStatus, requestedBy: String(request.requested_by), requiredApprovals: Number(request.required_approvals),
     decisions: decisions.map((row) => ({ reviewerId: String(row.reviewer_id), decision: row.decision as Decision })),
   }, context.actor.id, decision);
+  await policy.validateDecision?.(context, {
+    resourceId, decision, priorApprovals: decisions.filter((row) => row.decision === "approve").length,
+    requiredApprovals: Number(request.required_approvals),
+  });
   await context.write("approval_decisions", {
     sql: "INSERT INTO approval_decisions (id, approval_id, reviewer_id, decision) VALUES (?, ?, ?, ?)",
     args: [randomUUID(), String(request.id), context.actor.id, decision],

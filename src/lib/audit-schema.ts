@@ -9,6 +9,8 @@ export const auditedTables: readonly AuditedTable[] = [
   { table: "approval_requests", columns: ["id", "resource_type", "resource_id", "requested_by", "policy_key", "policy_version", "required_approvals", "approval_count", "status", "created_at", "updated_at"] },
   { table: "approval_decisions", columns: ["id", "approval_id", "reviewer_id", "decision", "decided_at"] },
   { table: "refund_requests", columns: ["id", "approval_id", "customer", "amount_cents", "reason"] },
+  { table: "kyc_cases", columns: ["id", "approval_id", "customer", "country", "document_type", "risk_score", "assigned_to", "escalated"] },
+  { table: "kyc_events", columns: ["id", "case_id", "actor_id", "actor_name", "actor_role", "action", "note", "occurred_at"] },
 ];
 
 const internalTables = new Set(["users", "sessions", "schema_migrations", "audit_log", "audit_context", "audited_tables"]);

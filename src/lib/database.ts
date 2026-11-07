@@ -8,10 +8,12 @@ import { auditedTables, installAuditing, systemContext } from "./audit-schema";
 import { mutations, type MutationName } from "./mutations";
 import { AUDIT_PAGE_SIZE, type AuditEntry } from "./audit";
 import type { Refund } from "./refund-types";
+import type { KycCase } from "./kyc-types";
 
 export const SESSION_SECONDS = 60 * 60 * 8;
 export const demoUsers: User[] = [
   { id: "user-agent", name: "Alex Morgan", email: "alex@example.test", role: "agent" },
+  { id: "user-agent-2", name: "Casey Chen", email: "casey@example.test", role: "agent" },
   { id: "user-reviewer", name: "Sam Rivera", email: "sam@example.test", role: "reviewer" },
   { id: "user-reviewer-2", name: "Priya Shah", email: "priya@example.test", role: "reviewer" },
   { id: "user-admin", name: "Jordan Lee", email: "jordan@example.test", role: "admin" },
@@ -76,6 +78,20 @@ export class Store {
           id TEXT PRIMARY KEY, approval_id TEXT NOT NULL UNIQUE REFERENCES approval_requests(id),
           customer TEXT NOT NULL, amount_cents INTEGER NOT NULL CHECK (typeof(amount_cents) = 'integer' AND amount_cents BETWEEN 1 AND 9007199254740991), reason TEXT NOT NULL
         )`,
+        `CREATE TABLE IF NOT EXISTS kyc_cases (
+          id TEXT PRIMARY KEY NOT NULL, approval_id TEXT NOT NULL UNIQUE REFERENCES approval_requests(id),
+          customer TEXT NOT NULL, country TEXT NOT NULL CHECK (length(country) = 2),
+          document_type TEXT NOT NULL CHECK (document_type IN ('passport', 'national_id', 'driving_licence')),
+          risk_score REAL NOT NULL CHECK (risk_score BETWEEN 0 AND 100),
+          assigned_to TEXT REFERENCES users(id), escalated INTEGER NOT NULL DEFAULT 0 CHECK (escalated IN (0, 1))
+        )`,
+        `CREATE TABLE IF NOT EXISTS kyc_events (
+          id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, case_id TEXT NOT NULL REFERENCES kyc_cases(id),
+          actor_id TEXT NOT NULL REFERENCES users(id), actor_name TEXT NOT NULL, actor_role TEXT NOT NULL,
+          action TEXT NOT NULL CHECK (action IN ('submit', 'claim', 'release', 'approve', 'reject', 'escalate')),
+          note TEXT NOT NULL, occurred_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )`,
+        "CREATE INDEX IF NOT EXISTS kyc_events_case ON kyc_events(case_id, id)",
         ...demoUsers.map((user) => ({
           sql: "INSERT OR IGNORE INTO users (id, name, email, role) VALUES (?, ?, ?, ?)",
           args: [user.id, user.name, user.email, user.role],
@@ -83,6 +99,7 @@ export class Store {
       ]);
       await installAuditing(tx);
       await tx.execute("INSERT OR IGNORE INTO schema_migrations VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
+      await tx.execute("INSERT OR IGNORE INTO schema_migrations VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
       await systemContext(tx, "workspace_note", "system.seed");
       await tx.execute({ sql: "INSERT INTO workspace_note SELECT 1, ?, NULL, ? WHERE NOT EXISTS (SELECT 1 FROM workspace_note WHERE id = 1)", args: ["A shared starting point for better internal tools. Switch roles to see server-side permissions in action.", new Date().toISOString()] });
       await tx.execute("DELETE FROM audit_context");
@@ -182,6 +199,29 @@ export class Store {
       requestedBy: String(row.requested_by), requesterName: String(row.requester_name), status: row.status as Refund["status"],
       approvalCount: Number(row.approval_count), requiredApprovals: Number(row.required_approvals),
       createdAt: String(row.created_at), updatedAt: String(row.updated_at), decisions: JSON.parse(String(row.decisions_json)),
+    }));
+  }
+
+  async kycCases(): Promise<KycCase[]> {
+    await this.ready;
+    const result = await this.#run(() => this.#client.execute(`
+      SELECT k.*, a.requested_by, a.status, a.required_approvals, a.approval_count, a.created_at,
+        u.name AS assignee_name,
+        (SELECT json_group_array(json_object('id', e.id, 'actorId', e.actor_id, 'actorName', e.actor_name,
+          'actorRole', e.actor_role, 'action', e.action, 'note', e.note, 'occurredAt', e.occurred_at))
+          FROM (SELECT * FROM kyc_events WHERE case_id = k.id ORDER BY id) e) AS history_json
+      FROM kyc_cases k JOIN approval_requests a ON a.id = k.approval_id
+      LEFT JOIN users u ON u.id = k.assigned_to
+      WHERE a.resource_type = 'kyc' AND a.resource_id = k.id
+      ORDER BY a.created_at DESC, k.id DESC`));
+    return result.rows.map((row) => ({
+      id: String(row.id), customer: String(row.customer), country: String(row.country),
+      documentType: row.document_type as KycCase["documentType"], riskScore: Number(row.risk_score),
+      requestedBy: String(row.requested_by), status: row.status as KycCase["status"],
+      approvalCount: Number(row.approval_count), requiredApprovals: Number(row.required_approvals),
+      assignedTo: row.assigned_to === null ? null : String(row.assigned_to),
+      assigneeName: row.assignee_name === null ? null : String(row.assignee_name), escalated: !!row.escalated,
+      createdAt: String(row.created_at), history: JSON.parse(String(row.history_json)),
     }));
   }
 

@@ -10,6 +10,10 @@ export const permissions = {
   "refunds:read": { label: "View refunds", description: "Browse refund requests and review progress", roles },
   "refunds:create": { label: "Request a refund", description: "Submit a fixed customer, amount, and reason", roles: ["agent"] },
   "refunds:review": { label: "Review refunds", description: "Approve or reject another person's request", roles: ["reviewer"] },
+  "kyc:read": { label: "View KYC cases", description: "Browse verification details and complete case history", roles },
+  "kyc:create": { label: "Submit KYC verification", description: "Record signup verification details from the vendor", roles: ["agent"] },
+  "kyc:review": { label: "Review KYC cases", description: "Claim, approve, reject, or escalate customer verification", roles: ["agent", "reviewer"] },
+  "kyc:senior-review": { label: "Senior KYC review", description: "Review escalations and provide the second high-risk approval", roles: ["reviewer"] },
 } as const satisfies Record<string, { label: string; description: string; roles: readonly Role[] }>;
 
 export type Permission = keyof typeof permissions;
