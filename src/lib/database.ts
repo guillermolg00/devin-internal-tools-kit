@@ -38,9 +38,14 @@ export class Store {
   #operations: Promise<void> = Promise.resolve();
   private ready: Promise<void>;
 
-  constructor(path: string) {
-    if (path !== ":memory:") mkdirSync(dirname(resolve(path)), { recursive: true });
-    this.#client = createClient({ url: path === ":memory:" ? path : `file:${resolve(path)}`, concurrency: 1 });
+  readonly #remote: boolean;
+
+  // `path` is a local SQLite file, ":memory:", or a remote libSQL URL (e.g. Turso) used with `authToken`.
+  constructor(path: string, authToken?: string) {
+    this.#remote = /^(libsql|https?|wss?):\/\//.test(path);
+    if (!this.#remote && path !== ":memory:") mkdirSync(dirname(resolve(path)), { recursive: true });
+    const url = this.#remote || path === ":memory:" ? path : `file:${resolve(path)}`;
+    this.#client = createClient({ url, authToken, concurrency: 1 });
     this.ready = this.initialize();
   }
 
@@ -51,11 +56,16 @@ export class Store {
     return pending;
   }
 
+  // Connection PRAGMAs only apply to a local file; a remote libSQL server manages its own connections.
+  private async pragma(statement: string) {
+    if (!this.#remote) await this.#client.execute(statement);
+  }
+
   // SQLite cannot alter a CHECK constraint, so a new role rebuilds the users table with foreign keys off.
   private async migrateUserRoles() {
     const [existing] = (await this.#client.execute("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'users'")).rows;
     if (!existing || roles.every((role) => String(existing.sql).includes(`'${role}'`))) return;
-    await this.#client.execute("PRAGMA foreign_keys = OFF");
+    await this.pragma("PRAGMA foreign_keys = OFF");
     const tx = await this.#client.transaction("write");
     try {
       await tx.execute(usersTable("users_next"));
@@ -69,9 +79,9 @@ export class Store {
 
   private async initialize() {
     await this.migrateUserRoles();
-    await this.#client.execute("PRAGMA foreign_keys = ON");
-    await this.#client.execute("PRAGMA busy_timeout = 5000");
-    await this.#client.execute("PRAGMA recursive_triggers = ON");
+    await this.pragma("PRAGMA foreign_keys = ON");
+    await this.pragma("PRAGMA busy_timeout = 5000");
+    await this.pragma("PRAGMA recursive_triggers = ON");
     const tx = await this.#client.transaction("write");
     try {
       await tx.batch([
@@ -294,7 +304,9 @@ export function getStore() {
   const existing = globalStore.toolsStore;
   if (existing instanceof Store) return existing;
   if (existing && typeof existing === "object" && "close" in existing && typeof existing.close === "function") existing.close();
-  const store = new Store(process.env.DATABASE_PATH || "./data/internal-tools.db");
+  const store = process.env.TURSO_DATABASE_URL
+    ? new Store(process.env.TURSO_DATABASE_URL, process.env.TURSO_AUTH_TOKEN)
+    : new Store(process.env.DATABASE_PATH || "./data/internal-tools.db");
   globalStore.toolsStore = store;
   return store;
 }

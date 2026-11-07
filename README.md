@@ -4,6 +4,13 @@
 
 **What this is.** A prototype that answers one question: *can a fintech build its internal tools in code with Devin instead of paying for Microsoft Power Apps?* It is evidence for that decision, not a production system. Sign-in is a demo picker, storage is single-node SQLite, and nothing is deployed.
 
+**Live demo.** DEMO_URL_PLACEHOLDER. The access password is included in the submission's key-decisions one-pager. After the password, pick any fictional identity and switch roles from the top-right menu. Data is fictional and shared by everyone using the demo.
+
+| | |
+| --- | --- |
+| ![Pick a demo identity](docs/screenshots/login.png) | ![Refunds: dual approval plus compliance sign-off above $5,000](docs/screenshots/refunds.png) |
+| ![KYC queue: claims, escalation, senior second approval](docs/screenshots/kyc.png) | ![Audit log: who changed what, with before/after snapshots](docs/screenshots/audit.png) |
+
 **Results at a glance.**
 
 | | |
@@ -111,6 +118,7 @@ Switch users from the top-right identity menu or sign out to return to the picke
 - The role is loaded from SQLite on each request, never taken from the cookie payload, a client-supplied role, or React state.
 - Every protected page checks access before fetching protected data. Every API handler checks independently; a layout or hidden button is not the security boundary.
 - API responses use `Cache-Control: no-store`. Mutations require a same-origin Origin header.
+- The hosted demo runs with fictional data behind a shared-password gate (`DEMO_PASSWORD`, enforced in `src/proxy.ts` for every page and API) and stores data in Turso (`TURSO_DATABASE_URL`). The gate keeps casual traffic out; it is not identity.
 - `next build` / `next start` disables fake login by default. For a **private demo only**, use `ENABLE_DEMO_AUTH=true bun run start` after building. Do not enable it on a real-data deployment.
 
 Before production, replace `/api/session` and the seeded picker with a real identity provider and controlled user provisioning. Keep the permission policy and server guards; add tool-specific resource/tenant checks, audit trails, and operational controls. Use a persistent disk if hosting SQLite: this setup is for a single local server, not ephemeral or horizontally scaled serverless instances.
