@@ -19,6 +19,15 @@ jobs:
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
+      - name: Dev server smoke test (fresh clone must serve pages)
+        run: |
+          bun run dev > dev.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/login || true)
+            if [ "$code" = "200" ]; then echo "dev server OK"; kill %1; exit 0; fi
+            sleep 1
+          done
+          echo "dev server never served /login (last status: $code)"; cat dev.log; exit 1
       - run: bun run lint
       - run: bun run typecheck
       - run: bun run test
