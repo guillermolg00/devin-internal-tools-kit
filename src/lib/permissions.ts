@@ -7,6 +7,9 @@ export const permissions = {
   "note:write": { label: "Edit the workspace note", description: "Update the shared demo note", roles: ["reviewer", "admin"] },
   "users:read": { label: "View team directory", description: "Access the protected member list", roles: ["admin"] },
   "audit:read": { label: "Browse the audit log", description: "Inspect business changes and before/after snapshots", roles: ["admin"] },
+  "refunds:read": { label: "View refunds", description: "Browse refund requests and review progress", roles },
+  "refunds:create": { label: "Request a refund", description: "Submit a fixed customer, amount, and reason", roles: ["agent"] },
+  "refunds:review": { label: "Review refunds", description: "Approve or reject another person's request", roles: ["reviewer"] },
 } as const satisfies Record<string, { label: string; description: string; roles: readonly Role[] }>;
 
 export type Permission = keyof typeof permissions;

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, Check, LogOut, LoaderCircle } from "lucide-react";
 import type { User } from "@/lib/permissions";
 
 export function UserSwitcher({ user, users }: { user: User; users: User[] }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -21,7 +22,7 @@ export function UserSwitcher({ user, users }: { user: User; users: User[] }) {
       });
       if (!response.ok) throw new Error((await response.json()).error);
       document.querySelector<HTMLDetailsElement>(".user-menu")?.removeAttribute("open");
-      router.push(userId ? "/" : "/login");
+      router.push(userId ? pathname : "/login");
       router.refresh();
     } catch (error) { setError(error instanceof Error ? error.message : "Unable to switch users."); }
     finally { setBusy(false); }

@@ -83,7 +83,7 @@ try {
 
   const admin = await login("user-admin");
   const team = await request("/api/users", { cookie: admin });
-  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 3);
+  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 4);
   assert.equal(team.headers.get("cache-control"), "no-store");
   assert.match(await (await request("/team", { cookie: admin })).text(), /Workspace members/);
   const audit = await request("/api/audit", { cookie: admin });

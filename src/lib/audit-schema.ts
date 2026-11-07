@@ -6,6 +6,9 @@ export type AuditedTable = { table: string; columns: readonly string[] };
 
 export const auditedTables: readonly AuditedTable[] = [
   { table: "workspace_note", columns: ["id", "content", "updated_by", "updated_at"] },
+  { table: "approval_requests", columns: ["id", "resource_type", "resource_id", "requested_by", "policy_key", "policy_version", "required_approvals", "approval_count", "status", "created_at", "updated_at"] },
+  { table: "approval_decisions", columns: ["id", "approval_id", "reviewer_id", "decision", "decided_at"] },
+  { table: "refund_requests", columns: ["id", "approval_id", "customer", "amount_cents", "reason"] },
 ];
 
 const internalTables = new Set(["users", "sessions", "schema_migrations", "audit_log", "audit_context", "audited_tables"]);

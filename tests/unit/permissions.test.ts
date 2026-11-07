@@ -3,9 +3,9 @@ import { AccessError, authorize, can, permissions, roles, type Permission, type 
 
 describe("server authorization policy", () => {
   const expected = {
-    agent: ["workspace:read"],
-    reviewer: ["workspace:read", "note:write"],
-    admin: ["workspace:read", "note:write", "users:read", "audit:read"],
+    agent: ["workspace:read", "refunds:read", "refunds:create"],
+    reviewer: ["workspace:read", "note:write", "refunds:read", "refunds:review"],
+    admin: ["workspace:read", "note:write", "users:read", "audit:read", "refunds:read"],
   };
   for (const role of roles) {
     const user: User = { id: "test", name: "Test", email: "test@example.test", role };

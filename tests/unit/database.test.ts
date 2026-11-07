@@ -10,7 +10,7 @@ afterEach(() => { for (const db of fixtures.splice(0)) db.close(); });
 describe("SQLite and sessions", () => {
   test("seeds three roles and a workspace note", async () => {
     const { store } = await database();
-    expect((await store.users()).map((user) => user.role)).toEqual(["agent", "reviewer", "admin"]);
+    expect((await store.users()).map((user) => user.role)).toEqual(["agent", "reviewer", "reviewer", "admin"]);
     expect((await store.note()).content).toContain("shared starting point");
     expect("client" in store).toBe(false);
   });
@@ -51,7 +51,7 @@ describe("SQLite and sessions", () => {
     store.close();
     const reopened = new Store(path);
     try {
-      expect((await reopened.users()).length).toBe(3);
+      expect((await reopened.users()).length).toBe(4);
       expect(await reopened.note()).toMatchObject({ content: "Persist this note", updatedBy: "Sam Rivera" });
       expect((await reopened.auditEntries()).entries.length).toBe(2);
     } finally { reopened.close(); }

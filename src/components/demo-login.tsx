@@ -6,7 +6,7 @@ import { ArrowRight, Headset, ClipboardCheck, Shield, LoaderCircle } from "lucid
 import type { User } from "@/lib/permissions";
 
 const icons = { agent: Headset, reviewer: ClipboardCheck, admin: Shield };
-const descriptions = { agent: "Explore the workspace with read-only access.", reviewer: "Review the workspace and edit shared notes.", admin: "Access everything, including the team directory." };
+const descriptions = { agent: "Submit refund requests and follow their progress.", reviewer: "Approve or reject refunds and edit shared notes.", admin: "Inspect refunds, audit history, and the team directory." };
 
 export function DemoLogin({ users }: { users: User[] }) {
   const router = useRouter();
