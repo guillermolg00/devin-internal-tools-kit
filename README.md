@@ -35,6 +35,7 @@ Total one-time platform hardening: roughly 2–4 engineer-weeks with Devin.
 4. A fresh session given one plain-language ticket: [#7](https://github.com/guillermolg00/devin-internal-tools-kit/pull/7), the KYC queue. It mapped KYC roles onto the existing roles without asking; see Known gaps.
 5. Another fresh session given a change request: [#8](https://github.com/guillermolg00/devin-internal-tools-kit/pull/8), compliance sign-off. It flagged its in-flight policy decision for review: pending refunds move to the new rule.
 6. Human review pass: [#9](https://github.com/guillermolg00/devin-internal-tools-kit/pull/9), CI hardening, Known gaps, and the reasoning log.
+7. Devin's own browser E2E run of the compliance flow: [#10](https://github.com/guillermolg00/devin-internal-tools-kit/pull/10). It caught a misleading "sign-off complete" label after compliance declined a refund, a bug that every unit and HTTP test had missed.
 
 **More detail:** [Power Apps research](docs/research/power-apps.md) · [Reasoning log](docs/reasoning-log.md) (step 23 explains the three categories) · [New-tool playbook](docs/new-app-playbook.md) · [Known gaps before production](#known-gaps-before-production-from-human-review)
 

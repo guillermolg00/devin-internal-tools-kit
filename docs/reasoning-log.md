@@ -619,6 +619,26 @@ compliance accountability, and decisions. Devin lowers its cost (tests, maintena
 flagged decisions) but doesn't remove it. That's the honest version, and it's also the one that
 sells, because a VP of Engineering will trust it.
 
+## Step 24 — The E2E test earned its keep (PR #10), plus the README overview (PR #11)
+
+**PR #10:** Devin's own browser E2E run of the compliance flow caught a UI bug that all 100+ unit
+and HTTP tests missed. When compliance *declined* a refund, the progress line still said
+"Compliance sign-off · complete". The data was correct (the refund was rejected and locked), but
+an operator reading the screen would have been misled. A three-line fix, merged. This is direct
+evidence for Step 21: each layer of testing catches a different class of bug, and Devin runs all
+of them without being asked.
+
+**A readability note for the ownership argument:** the UI components are dense, single-line
+JSX. The refunds table row is one line of several hundred characters. That's fine for an agent,
+and costly for the human who has to review or debug it at 2 a.m. A real build should enforce
+formatting (Prettier) in CI. It costs nothing to add, and it directly reduces review time, the
+cost that dominates.
+
+**PR #11 (README "For evaluators"):** Devin wrote the overview using the three categories from
+Step 23. It is honest: it states the KYC role mapping, marks "not estimated" where the sources
+have no figure, and declines to invent numbers. Its list stops at #9 because #10 was still open
+at the time.
+
 **Timing (reported by Guillermo):** ~40 min of prototype time so far. That covers the
 foundation, audit log, refunds, conventions, and one human fix, plus the research in parallel.
 That leaves ~80 min of the 2h budget for KYC, the change request, and wrap-up.
