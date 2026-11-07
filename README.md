@@ -136,6 +136,17 @@ Admins can expand before/after snapshots in `/audit`. Both page and API enforce 
 4. Use `can()` only to reflect access in the UI. Add negative HTTP and audit-rollback tests. Add resource/tenant checks inside the mutation transaction when a global role is insufficient.
 5. For approvals, define a tool policy and call `createApproval()` / `decideApproval()` from its named operations. Declare the shared workflow/decision tables alongside the tool's tables in the operation. Do not implement approval counting or finality again in routes or UI.
 
+## Known gaps before production (from human review)
+
+All of these pass the test suite, because the tests encode the current design. They need a decision before real use:
+
+- **Roles are global, not per tool.** One `role` per user drives every tool. KYC maps "analyst" to `agent` and "senior reviewer" to `reviewer`, so anyone who reviews refunds is automatically a senior KYC approver, and any support agent can approve low-risk KYC. `kyc:read`, including customer PII, is granted to every role. Production needs per-tool role assignments (least privilege, segregation of duties) sourced from the identity provider.
+- **Access changes are not audited.** `users` is internal and seeded. Role assignment should come from the IdP (SSO + SCIM) with its own audit trail, or through dedicated audited operations.
+- **Tool migrations live in the platform core.** `Store.initialize()` in `src/lib/database.ts` holds every tool's schema and data migrations (the v4 refunds-policy migration imports a refunds constant). Before more tools are added, move to per-tool, versioned migrations.
+- **Policy changes need an explicit in-flight decision.** Approval requests store their policy version. v4 deliberately moved pending refunds onto the new compliance policy, and each move is audited. Any future policy change must make the same call on purpose.
+- **Single-node SQLite.** All database access is serialized on one connection. Production means Postgres, with the actor carried per transaction, plus audit export to tamper-resistant storage.
+- **Demo identity only.** See "This is deliberately fake authentication" above.
+
 ## Verify
 
 ```sh
@@ -148,4 +159,4 @@ bun run test:integration
 
 Use `bun run test`, not bare `bun test`: the test script supplies the `react-server` condition so Bun can import modules protected by `server-only`. Integration checks start their own production server on port 3107 (`TEST_PORT` can override it), use a disposable database, and stop it afterward. They cover unauthenticated requests, forged cookies and roles, all four role boundaries, mutation validation, cross-origin rejection, session switching/logout, production demo-login gating, and persistence across server restarts. No browser automation is needed for these API checks.
 
-CI runs the same verification commands. There are no pre-commit hooks; run the checks before committing.
+CI runs the same verification commands, plus a smoke test that `bun run dev` serves `/login` from a fresh checkout. There are no pre-commit hooks; run the checks before committing.

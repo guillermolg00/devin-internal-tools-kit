@@ -4,11 +4,10 @@ Next.js App Router + TypeScript + local SQLite. Tools share one app, shell, sess
 
 ## Run and verify
 
-Requires Node.js 22+ and Bun 1.4.4:
+Requires Node.js 22+. The app runs with npm or Bun; Bun 1.4.4 is required only for the test suite:
 
 ```sh
-bun install --frozen-lockfile
-bun run dev
+npm install && npm run dev      # or: bun install --frozen-lockfile && bun run dev
 ```
 
 Open http://localhost:3000 and choose a demo user. SQLite initializes automatically at `data/internal-tools.db` (`DATABASE_PATH` overrides it). Keep Next.js on **Node**, not `bun --bun`.
