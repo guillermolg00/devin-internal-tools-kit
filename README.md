@@ -12,7 +12,7 @@
 | Devin compute | Every measured session was Devin's smallest size, XS: under $4 of usage each, so at most about $16 across the four sessions |
 | Who wrote it | Devin opened 9 of 13 PRs. A human reviewed and merged every PR, and wrote 4 small ones (a run fix, a review pass, and docs). |
 | App #N | The KYC queue came from **one plain-language message** in a fresh session, with zero interventions during the build |
-| Change request | Compliance sign-off came from one message. It added a new role, migrated the schema in place, and **flagged** its in-flight policy decision for human review instead of making it silently. |
+| Change request | Compliance sign-off came from a single ticket written as a finance ops lead. It added a new role, migrated the schema in place, and **flagged** its in-flight policy decision for human review instead of making it silently. |
 | Assurance | 106 unit tests, HTTP integration tests against a real server, Devin-run browser E2E checks, and CI on every PR. The E2E run caught a UI bug that the unit tests missed (#10). |
 
 Our estimate, not a measurement: comparable scope with this level of testing usually takes an engineer several weeks. Here the engineer's job was to review, decide, and correct. Devin's compute is negligible next to the people. The cost that matters is the review and ownership time described below.
