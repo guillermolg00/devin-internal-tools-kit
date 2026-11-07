@@ -1,5 +1,45 @@
 # Foundry · Internal tools kit
 
+## For evaluators: internal tools with Devin instead of Power Apps
+
+**What this is.** A prototype that answers one question: *can a fintech build its internal tools in code with Devin instead of paying for Microsoft Power Apps?* It is evidence for that decision, not a production system. Sign-in is a demo picker, storage is single-node SQLite, and nothing is deployed.
+
+**What was built.**
+- A shared platform: server-side permission checks on every page and API; an atomic, append-only audit log, where a business write and its audit rows commit or roll back together; and a reusable approval engine with quorum, no self-review, and final decisions.
+- On top of the platform: a refunds dashboard and a KYC review queue.
+- A later change request: compliance sign-off for refunds above $5,000.
+- Feature-flag admin is only a placeholder.
+
+**Power Apps capabilities, mapped to this repo.** Effort estimates assume Devin builds and an engineer reviews. They are judgment, not measured.
+
+| Power Apps capability | Built here | Not built in this prototype, buildable with Devin (rough effort) | Not a code problem: owned by the client regardless |
+| --- | --- | --- | --- |
+| Fast app creation over Dataverse | Shared platform plus [playbook](docs/new-app-playbook.md); the KYC queue came from one ticket | Postgres plus per-tool versioned migrations (~1–2 days) | — |
+| Entra ID sign-in and provisioning | Demo login only; anyone can pick admin | SSO (Entra ID/Okta OIDC) plus SCIM (~1–3 days, including security review) | — |
+| Dataverse security roles | Server-side role checks, but roles are global, not per tool | Per-tool roles plus audited access changes (~1–2 days) | Access decisions: who may do what |
+| Power Automate approvals | Shared approval engine with an optional extra sign-off | — | Policy decisions, e.g. when a new rule takes effect |
+| Dataverse auditing | Append-only audit log with actor snapshots, guarded by SQLite triggers (not tamper-proof storage) | Export to tamper-resistant storage, part of the Postgres move (not estimated) | — |
+| 1,000+ connectors | None; KYC has an intake endpoint but no vendor client | Only the few in use, e.g. ledger, payment processor, KYC vendor, Slack (hours to a day each) | — |
+| Environments, ALM, hosting | Git, PRs, CI (tests plus a dev-server smoke test) | Deploy on their cloud: IaC, CI/CD, observability, backups (~3–5 days) | Operations: on-call, uptime, incident response |
+| DLP | Not a toggle here; code review is the closest equivalent | Secrets management and egress control (not estimated) | — |
+| Compliance attestations (SOC, ISO) | — | — | Compliance accountability: Microsoft certifies its own platform, not customer-built apps |
+
+Total one-time platform hardening: roughly 2–4 engineer-weeks with Devin.
+
+**Citizen development changes shape.** In Power Apps, a non-engineer builds and publishes without code review. Here, the same person writes a plain-language ticket, Devin opens a tested PR, and an engineer reviews it before anything ships. For a regulated company, that is a deliberate trade-off.
+
+**How it was built.** Devin sessions opened the PRs below, apart from #4 and #9, which a human wrote. A human reviewed and merged every PR.
+1. A research session, running in parallel with the rest: [#1](https://github.com/guillermolg00/devin-internal-tools-kit/pull/1), a sourced brief on Power Apps.
+2. The foundation session: [#2](https://github.com/guillermolg00/devin-internal-tools-kit/pull/2) the platform and permissions, [#3](https://github.com/guillermolg00/devin-internal-tools-kit/pull/3) the audit log, [#5](https://github.com/guillermolg00/devin-internal-tools-kit/pull/5) refunds, and [#6](https://github.com/guillermolg00/devin-internal-tools-kit/pull/6) contributor conventions and the playbook.
+3. Human: [#4](https://github.com/guillermolg00/devin-internal-tools-kit/pull/4), so that a fresh clone runs on Node.
+4. A fresh session given one plain-language ticket: [#7](https://github.com/guillermolg00/devin-internal-tools-kit/pull/7), the KYC queue. It mapped KYC roles onto the existing roles without asking; see Known gaps.
+5. Another fresh session given a change request: [#8](https://github.com/guillermolg00/devin-internal-tools-kit/pull/8), compliance sign-off. It flagged its in-flight policy decision for review: pending refunds move to the new rule.
+6. Human review pass: [#9](https://github.com/guillermolg00/devin-internal-tools-kit/pull/9), CI hardening, Known gaps, and the reasoning log.
+
+**More detail:** [Power Apps research](docs/research/power-apps.md) · [Reasoning log](docs/reasoning-log.md) (step 23 explains the three categories) · [New-tool playbook](docs/new-app-playbook.md) · [Known gaps before production](#known-gaps-before-production-from-human-review)
+
+---
+
 A small shared foundation for code-based internal tools, built with Next.js App Router, TypeScript, and local SQLite. Includes a workspace shell, seeded demo identities, server-side role-based permissions, and a persisted note as a minimal read/write example.
 
 Includes a refunds dashboard and KYC review queue with audited, reusable approvals. Feature-flag admin remains a **future module**. No payments are issued by this app.
