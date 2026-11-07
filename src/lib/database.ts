@@ -19,12 +19,20 @@ const hashToken = (token: string) => createHash("sha256").update(token).digest("
 
 export class Store {
   readonly #client: Client;
+  #operations: Promise<void> = Promise.resolve();
   private ready: Promise<void>;
 
   constructor(path: string) {
     if (path !== ":memory:") mkdirSync(dirname(resolve(path)), { recursive: true });
-    this.#client = createClient({ url: path === ":memory:" ? path : `file:${resolve(path)}` });
+    this.#client = createClient({ url: path === ":memory:" ? path : `file:${resolve(path)}`, concurrency: 1 });
     this.ready = this.initialize();
+  }
+
+  // One connection preserves PRAGMAs; queued access prevents transaction reentry.
+  #run<T>(run: () => Promise<T>): Promise<T> {
+    const pending = this.#operations.then(run);
+    this.#operations = pending.then(() => {}, () => {});
+    return pending;
   }
 
   private async initialize() {
@@ -61,7 +69,7 @@ export class Store {
 
   async users(): Promise<User[]> {
     await this.ready;
-    const result = await this.#client.execute("SELECT id, name, email, role FROM users ORDER BY CASE role WHEN 'agent' THEN 1 WHEN 'reviewer' THEN 2 ELSE 3 END");
+    const result = await this.#run(() => this.#client.execute("SELECT id, name, email, role FROM users ORDER BY CASE role WHEN 'agent' THEN 1 WHEN 'reviewer' THEN 2 ELSE 3 END"));
     return result.rows as unknown as User[];
   }
 
@@ -69,32 +77,32 @@ export class Store {
     await this.ready;
     if (!(await this.users()).some((user) => user.id === userId)) return null;
     const token = randomBytes(32).toString("hex");
-    await this.#client.batch([
+    await this.#run(() => this.#client.batch([
       { sql: "DELETE FROM sessions WHERE expires_at <= ?", args: [Date.now()] },
       ...(previousToken ? [{ sql: "DELETE FROM sessions WHERE token_hash = ?", args: [hashToken(previousToken)] }] : []),
       { sql: "INSERT INTO sessions VALUES (?, ?, ?)", args: [hashToken(token), userId, Date.now() + SESSION_SECONDS * 1000] },
-    ], "write");
+    ], "write"));
     return token;
   }
 
   async sessionUser(token?: string): Promise<User | null> {
     if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
     await this.ready;
-    const result = await this.#client.execute({
+    const result = await this.#run(() => this.#client.execute({
       sql: "SELECT users.id, name, email, role FROM sessions JOIN users ON users.id = sessions.user_id WHERE token_hash = ? AND expires_at > ?",
       args: [hashToken(token), Date.now()],
-    });
+    }));
     return (result.rows[0] as unknown as User) ?? null;
   }
 
   async deleteSession(token?: string) {
     await this.ready;
-    if (token) await this.#client.execute({ sql: "DELETE FROM sessions WHERE token_hash = ?", args: [hashToken(token)] });
+    if (token) await this.#run(() => this.#client.execute({ sql: "DELETE FROM sessions WHERE token_hash = ?", args: [hashToken(token)] }));
   }
 
   async note() {
     await this.ready;
-    const result = await this.#client.execute("SELECT content, updated_at AS updatedAt, users.name AS updatedBy FROM workspace_note LEFT JOIN users ON users.id = workspace_note.updated_by WHERE workspace_note.id = 1");
+    const result = await this.#run(() => this.#client.execute("SELECT content, updated_at AS updatedAt, users.name AS updatedBy FROM workspace_note LEFT JOIN users ON users.id = workspace_note.updated_by WHERE workspace_note.id = 1"));
     return result.rows[0] as unknown as { content: string; updatedAt: string; updatedBy: string | null };
   }
 
@@ -102,28 +110,30 @@ export class Store {
     await this.ready;
     const mutation = mutations[name];
     if (!mutation || !auditedTables.some((table) => table.table === mutation.table)) throw new Error("Unregistered business mutation");
-    const tx = await this.#client.transaction("write");
-    try {
-      const actorRow = await tx.execute({ sql: "SELECT id, name, email, role FROM users WHERE id = ?", args: [actorId] });
-      const actor = authorize((actorRow.rows[0] as unknown as User) ?? null, mutation.permission);
-      const statement = mutation.statement(input, actor.id);
-      const mutationId = randomUUID();
-      await tx.execute({ sql: "INSERT INTO audit_context VALUES (1, ?, ?, ?, ?, ?, ?, ?)", args: [mutationId, actor.id, actor.name, actor.email, actor.role, name, mutation.table] });
-      await tx.execute(statement);
-      const audit = await tx.execute({ sql: "SELECT id FROM audit_log WHERE mutation_id = ?", args: [mutationId] });
-      if (!audit.rows.length) throw new Error("Mutation did not produce an audit entry");
-      await tx.execute("DELETE FROM audit_context");
-      await tx.commit();
-      return { mutationId };
-    } finally { tx.close(); }
+    return this.#run(async () => {
+      const tx = await this.#client.transaction("write");
+      try {
+        const actorRow = await tx.execute({ sql: "SELECT id, name, email, role FROM users WHERE id = ?", args: [actorId] });
+        const actor = authorize((actorRow.rows[0] as unknown as User) ?? null, mutation.permission);
+        const statement = mutation.statement(input, actor.id);
+        const mutationId = randomUUID();
+        await tx.execute({ sql: "INSERT INTO audit_context VALUES (1, ?, ?, ?, ?, ?, ?, ?)", args: [mutationId, actor.id, actor.name, actor.email, actor.role, name, mutation.table] });
+        await tx.execute(statement);
+        const audit = await tx.execute({ sql: "SELECT id FROM audit_log WHERE mutation_id = ?", args: [mutationId] });
+        if (!audit.rows.length) throw new Error("Mutation did not produce an audit entry");
+        await tx.execute("DELETE FROM audit_context");
+        await tx.commit();
+        return { mutationId };
+      } finally { tx.close(); }
+    });
   }
 
   async auditEntries(before?: number) {
     await this.ready;
-    const result = await this.#client.execute({
+    const result = await this.#run(() => this.#client.execute({
       sql: `SELECT * FROM audit_log ${before === undefined ? "" : "WHERE id < ?"} ORDER BY id DESC LIMIT ?`,
       args: before === undefined ? [AUDIT_PAGE_SIZE + 1] : [before, AUDIT_PAGE_SIZE + 1],
-    });
+    }));
     const entries: AuditEntry[] = result.rows.slice(0, AUDIT_PAGE_SIZE).map((row) => ({
       id: Number(row.id), mutationId: String(row.mutation_id), occurredAt: String(row.occurred_at),
       actor: { id: String(row.actor_id), name: String(row.actor_name), email: row.actor_email === null ? null : String(row.actor_email), role: String(row.actor_role) },
@@ -139,11 +149,12 @@ export class Store {
   }
 }
 
-const globalStore = globalThis as unknown as { toolsStore?: Store };
+const globalStore = globalThis as unknown as { toolsStore?: unknown };
 export function getStore() {
-  if (!(globalStore.toolsStore instanceof Store)) {
-    globalStore.toolsStore?.close?.();
-    globalStore.toolsStore = new Store(process.env.DATABASE_PATH || "./data/internal-tools.db");
-  }
-  return globalStore.toolsStore;
+  const existing = globalStore.toolsStore;
+  if (existing instanceof Store) return existing;
+  if (existing && typeof existing === "object" && "close" in existing && typeof existing.close === "function") existing.close();
+  const store = new Store(process.env.DATABASE_PATH || "./data/internal-tools.db");
+  globalStore.toolsStore = store;
+  return store;
 }

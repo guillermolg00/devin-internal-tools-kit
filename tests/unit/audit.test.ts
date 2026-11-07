@@ -120,6 +120,23 @@ describe("atomic, append-only business audit", () => {
     expect(new Set([...first.entries, ...second.entries].map((entry) => entry.id)).size).toBe(23);
   });
 
+  test("concurrent mutations keep each actor and before/after chain distinct", async () => {
+    const { store } = await database();
+    const [, , token] = await Promise.all([
+      store.mutate("workspace.note.update", "user-reviewer", { content: "Reviewer version" }),
+      store.mutate("workspace.note.update", "user-admin", { content: "Admin version" }),
+      store.createSession("user-admin"),
+      store.note(),
+      store.auditEntries(),
+    ]);
+    expect((await store.sessionUser(token!))?.id).toBe("user-admin");
+    const changes = (await store.auditEntries()).entries.filter((entry) => entry.operation === "update");
+    expect(changes.length).toBe(2);
+    expect(changes[0].before).toEqual(changes[1].after);
+    expect(new Set(changes.map((entry) => entry.actor.id)).size).toBe(2);
+    expect(new Set(changes.map((entry) => entry.mutationId)).size).toBe(2);
+  });
+
   test("a second table needs only table/columns to generate all three operations and composite IDs", async () => {
     const { raw } = await database();
     const tx = await raw.transaction("write");
