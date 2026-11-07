@@ -1,11 +1,14 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { createApproval, decideApproval, type ApprovalPolicy } from "./approvals";
+import { createApproval, decideApproval, type ApprovalPolicy, type Decision } from "./approvals";
 import { MutationInputError, type MutationContext } from "./mutation";
 
+export const COMPLIANCE_SIGNOFF_ABOVE_CENTS = 500_000;
+
 export const refundPolicy: ApprovalPolicy<{ amountCents: number }> = {
-  key: "refunds", version: 1, resourceType: "refund", permission: "refunds:review",
+  key: "refunds", version: 2, resourceType: "refund", permission: "refunds:review",
   requiredApprovals: ({ amountCents }) => amountCents > 50_000 ? 2 : 1,
+  signoff: { permission: "refunds:compliance-signoff", required: ({ amountCents }) => amountCents > COMPLIANCE_SIGNOFF_ABOVE_CENTS },
 };
 
 export function parseUSDCents(value: unknown) {
@@ -35,9 +38,19 @@ export async function createRefund(context: MutationContext, input: unknown) {
   return { id };
 }
 
-export async function reviewRefund(context: MutationContext, input: unknown) {
+function decisionInput(input: unknown): { id: string; decision: Decision } {
   const body = input as { id?: unknown; decision?: unknown } | null;
   if (typeof body?.id !== "string" || !/^[0-9a-f-]{36}$/.test(body.id)) throw new MutationInputError("A valid refund ID is required.");
   if (body.decision !== "approve" && body.decision !== "reject") throw new MutationInputError("Choose approve or reject.");
-  return decideApproval(context, refundPolicy, body.id, body.decision);
+  return { id: body.id, decision: body.decision };
+}
+
+export async function reviewRefund(context: MutationContext, input: unknown) {
+  const { id, decision } = decisionInput(input);
+  return decideApproval(context, refundPolicy, id, decision);
+}
+
+export async function signOffRefund(context: MutationContext, input: unknown) {
+  const { id, decision } = decisionInput(input);
+  return decideApproval(context, refundPolicy, id, decision, "signoff");
 }

@@ -1,18 +1,18 @@
 import { expect, test } from "bun:test";
-import { createApproval, decideApproval, type ApprovalPolicy, type Decision } from "../../src/lib/approvals";
+import { createApproval, decideApproval, transitionApproval, type ApprovalPolicy, type Decision } from "../../src/lib/approvals";
 import type { MutationContext } from "../../src/lib/mutation";
 
 test("a KYC-style policy reuses shared approval operations with a different quorum and permission", async () => {
   const policy: ApprovalPolicy<{ risk: string }> = { key: "kyc-test", version: 7, resourceType: "kyc-test", permission: "note:write", requiredApprovals: ({ risk }) => risk === "high" ? 3 : 1 };
   let request: Record<string, unknown>;
-  const decisions: { reviewer_id: string; decision: Decision }[] = [];
+  const decisions: { reviewer_id: string; decision: Decision; capacity: string }[] = [];
   const context: MutationContext = {
     actor: { id: "creator", name: "Creator", email: "test@example.test", role: "reviewer" },
     async read(statement) { return statement.sql.includes("approval_decisions") ? decisions : [request]; },
     async write(table, statement) {
       const args = statement.args!;
-      if (table === "approval_requests" && statement.sql.startsWith("INSERT")) request = { id: args[0], resource_type: args[1], resource_id: args[2], requested_by: args[3], policy_key: args[4], policy_version: args[5], required_approvals: args[6], status: "pending" };
-      else if (table === "approval_decisions") decisions.push({ reviewer_id: String(args[2]), decision: args[3] as Decision });
+      if (table === "approval_requests" && statement.sql.startsWith("INSERT")) request = { id: args[0], resource_type: args[1], resource_id: args[2], requested_by: args[3], policy_key: args[4], policy_version: args[5], required_approvals: args[6], signoff_required: args[7], status: "pending" };
+      else if (table === "approval_decisions") decisions.push({ reviewer_id: String(args[2]), decision: args[3] as Decision, capacity: String(args[4]) });
       else request.status = args[0];
     },
   };
@@ -25,4 +25,21 @@ test("a KYC-style policy reuses shared approval operations with a different quor
   expect(policy.requiredApprovals({ risk: "low" })).toBe(1);
   context.actor = { ...context.actor, id: "another", role: "agent" };
   await expect(decideApproval(context, policy, "customer-verification", "approve")).rejects.toThrow("permission");
+});
+
+test("a required sign-off is a separate capacity that never substitutes for review approvals", () => {
+  const base = { status: "pending" as const, requestedBy: "creator", requiredApprovals: 2, signoffRequired: true };
+  const reviewed = [{ reviewerId: "a", decision: "approve" as const, capacity: "review" as const }, { reviewerId: "b", decision: "approve" as const, capacity: "review" as const }];
+  expect(transitionApproval({ ...base, decisions: reviewed.slice(0, 1) }, "b", "approve")).toEqual({ status: "pending", approvalCount: 2, signedOff: false });
+  expect(() => transitionApproval({ ...base, decisions: reviewed }, "c", "approve")).toThrow("waiting for sign-off");
+  expect(transitionApproval({ ...base, decisions: reviewed }, "c", "reject").status).toBe("rejected");
+  expect(transitionApproval({ ...base, decisions: reviewed }, "s", "approve", "signoff")).toEqual({ status: "approved", approvalCount: 2, signedOff: true });
+  expect(transitionApproval({ ...base, decisions: [] }, "s", "approve", "signoff")).toEqual({ status: "pending", approvalCount: 0, signedOff: true });
+  expect(transitionApproval({ ...base, decisions: reviewed }, "s", "reject", "signoff").status).toBe("rejected");
+  const signed = [{ reviewerId: "s", decision: "approve" as const, capacity: "signoff" as const }];
+  expect(() => transitionApproval({ ...base, decisions: signed }, "t", "approve", "signoff")).toThrow("already been signed off");
+  expect(() => transitionApproval({ ...base, decisions: signed }, "s", "approve")).toThrow("already reviewed");
+  expect(() => transitionApproval({ ...base, decisions: [] }, "creator", "approve", "signoff")).toThrow("own request");
+  expect(() => transitionApproval({ ...base, signoffRequired: false, decisions: [] }, "s", "approve", "signoff")).toThrow("does not need a sign-off");
+  expect(transitionApproval({ ...base, signoffRequired: false, decisions: reviewed.slice(0, 1) }, "b", "approve").status).toBe("approved");
 });

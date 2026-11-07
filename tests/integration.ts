@@ -84,7 +84,7 @@ try {
 
   const admin = await login("user-admin");
   const team = await request("/api/users", { cookie: admin });
-  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 5);
+  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 6);
   assert.equal(team.headers.get("cache-control"), "no-store");
   assert.match(await (await request("/team", { cookie: admin })).text(), /Workspace members/);
   const audit = await request("/api/audit", { cookie: admin });
@@ -202,6 +202,49 @@ try {
   const refundsAfterRestart = await (await request("/api/refunds", { cookie: auditAdmin })).json();
   assert.deepEqual(refundsAfterRestart.refunds, rows);
   console.log("PASS refunds: role boundaries, threshold/quorum, duplicate and terminal decisions, concurrency, grouped audits, SSR, and persistence");
+
+  const compliance = await login("user-compliance");
+  async function signOffRefund(id: string, cookie: string | undefined, decision = "approve") {
+    return request(`/api/refunds/${id}/signoff`, { method: "POST", cookie, body: { decision, reviewerId: "user-admin", role: "reviewer", capacity: "review" } });
+  }
+  const large = await submitRefund("5000.01");
+  const atLimit = await submitRefund("5000.00");
+  assert.equal((await signOffRefund(large.result.id, undefined)).status, 401);
+  for (const cookie of [refundReviewer, afterRestart, auditAdmin]) assert.equal((await signOffRefund(large.result.id, cookie)).status, 403);
+  for (const id of [large.result.id, atLimit.result.id]) for (const decision of ["approve", "reject"]) assert.equal((await decideRefund(id, compliance, decision)).status, 403);
+  assert.equal((await request(`/api/refunds/${large.result.id}/signoff`, { method: "POST", cookie: compliance, requestOrigin: "https://elsewhere.example", body: { decision: "approve" } })).status, 403);
+  assert.equal((await request(`/api/refunds/${large.result.id}/signoff`, { method: "POST", cookie: compliance, rawBody: "{" })).status, 400);
+  assert.equal((await signOffRefund(large.result.id, compliance, "reset")).status, 400);
+  assert.equal((await signOffRefund("00000000-0000-4000-8000-000000000000", compliance)).status, 404);
+  assert.equal((await signOffRefund(atLimit.result.id, compliance)).status, 409);
+  assert.equal((await request(`/api/refunds/${large.result.id}/signoff`, { method: "DELETE", cookie: compliance })).status, 405);
+  const signoffRows = async () => (await (await request("/api/refunds", { cookie: compliance })).json()).refunds as { id: string; status: string; signoffRequired: boolean; approvalCount: number }[];
+  const largeRow = (await signoffRows()).find((row) => row.id === large.result.id)!;
+  assert.equal(largeRow.signoffRequired, true); assert.equal(largeRow.status, "pending");
+  assert.equal((await signoffRows()).find((row) => row.id === atLimit.result.id)!.signoffRequired, false);
+  assert.equal((await decideRefund(large.result.id, refundReviewer)).status, 200);
+  const secondLarge = await decideRefund(large.result.id, secondReviewer);
+  assert.equal(secondLarge.status, 200); assert.equal((await secondLarge.json()).result.status, "pending");
+  const signed = await signOffRefund(large.result.id, compliance);
+  assert.equal(signed.status, 200);
+  const signedResult = await signed.json();
+  assert.equal(signedResult.result.status, "approved");
+  assert.equal((await signOffRefund(large.result.id, compliance)).status, 409);
+  const signoffAudit = (await (await request("/api/audit", { cookie: auditAdmin })).json()).entries.filter((entry: { mutationId: string }) => entry.mutationId === signedResult.mutationId);
+  assert.equal(signoffAudit.length, 2);
+  assert.ok(signoffAudit.every((entry: { actor: { id: string; role: string } }) => entry.actor.id === "user-compliance" && entry.actor.role === "compliance"));
+  const declined = await submitRefund("7500.00");
+  assert.equal((await signOffRefund(declined.result.id, compliance, "reject")).status, 200);
+  assert.equal((await decideRefund(declined.result.id, refundReviewer)).status, 409);
+  assert.equal((await signoffRows()).find((row) => row.id === declined.result.id)!.status, "rejected");
+  const complianceView = await request("/refunds", { cookie: compliance });
+  assert.equal(complianceView.status, 200);
+  const complianceHtml = await complianceView.text();
+  assert.match(complianceHtml, /Compliance sign-off only/); assert.doesNotMatch(complianceHtml, /New refund request/);
+  const signoffBeforeRestart = await signoffRows();
+  await stop(); await start(true);
+  assert.deepEqual(await signoffRows(), signoffBeforeRestart);
+  console.log("PASS refund compliance sign-off: above-$5,000 boundary, role separation, spoofed capacity, terminal decline, grouped audits, SSR, and persistence");
 
   assert.equal((await request("/kyc")).status, 307);
   assert.equal((await request("/api/kyc")).status, 401);
