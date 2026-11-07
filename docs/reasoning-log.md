@@ -669,6 +669,17 @@ VP's first objection before they raise it.
 
 **Confirmed:** the change-request session (Step 22), billed on-demand, was also XS. All four Devin sessions were XS (≤ $4 each), so ≤ ~$16 of compute for the whole prototype.
 
+**Actual usage, read from Devin's billing pages (Usage & Limits, My Analytics):**
+- Plan: Devin **Pro, $20/month**. The billing cycle started 11/7, the same day as this
+  prototype, so all usage in the cycle is this work.
+- **Weekly included quota used: 17.2%.** Daily quota: 34%. **On-demand spend: $0.00**. Even
+  the change-request session ran on the included quota, not on-demand.
+- Allocated cost: $20/month is about $4.60 per weekly quota, and 17.2% of that is **about
+  $0.80 for the whole prototype**. This is the plan's included usage, not a separate bill.
+  Enterprise pricing for the client would be different. The order of magnitude is the point:
+  **under a dollar of compute**, against an estimated several engineer-weeks for comparable
+  scope.
+
 **Timing (reported by Guillermo):** ~40 min of prototype time so far. That covers the
 foundation, audit log, refunds, conventions, and one human fix, plus the research in parallel.
 That leaves ~80 min of the 2h budget for KYC, the change request, and wrap-up.
