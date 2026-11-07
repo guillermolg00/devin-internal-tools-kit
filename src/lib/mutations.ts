@@ -1,23 +1,24 @@
 import "server-only";
-import type { Permission } from "./permissions";
-
-export class MutationInputError extends Error {}
+import { MutationInputError, type MutationDefinition, type MutationContext } from "./mutation";
+import { createRefund, reviewRefund } from "./refunds";
 
 export const mutations = {
+  "refunds.create": { permission: "refunds:create", tables: ["approval_requests", "refund_requests"], run: createRefund },
+  "refunds.review": { permission: "refunds:review", tables: ["approval_requests", "approval_decisions"], run: reviewRefund },
   "workspace.note.update": {
-    permission: "note:write" satisfies Permission,
-    table: "workspace_note",
-    statement(input: unknown, actorId: string) {
+    permission: "note:write",
+    tables: ["workspace_note"],
+    async run(context: MutationContext, input: unknown) {
       const content = (input as { content?: unknown } | null)?.content;
       if (typeof content !== "string" || !content.trim() || content.trim().length > 1000) {
         throw new MutationInputError("Write a note between 1 and 1,000 characters.");
       }
-      return {
+      await context.write("workspace_note", {
         sql: "UPDATE workspace_note SET content = ?, updated_by = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = 1",
-        args: [content.trim(), actorId],
-      };
+        args: [content.trim(), context.actor.id],
+      });
     },
   },
-} as const;
+} as const satisfies Record<string, MutationDefinition>;
 
 export type MutationName = keyof typeof mutations;

@@ -83,7 +83,7 @@ try {
 
   const admin = await login("user-admin");
   const team = await request("/api/users", { cookie: admin });
-  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 3);
+  assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 4);
   assert.equal(team.headers.get("cache-control"), "no-store");
   assert.match(await (await request("/team", { cookie: admin })).text(), /Workspace members/);
   const audit = await request("/api/audit", { cookie: admin });
@@ -127,6 +127,80 @@ try {
   const persistedAudit = await (await request("/api/audit", { cookie: auditAdmin })).json();
   assert.equal(persistedAudit.entries[0].after.content, "Admin persisted note");
   console.log("PASS SQLite persistence across server restarts");
+
+  assert.equal((await request("/refunds")).status, 307);
+  assert.equal((await request("/api/refunds")).status, 401);
+  assert.equal((await request("/api/refunds", { method: "POST", body: {} })).status, 401);
+  const refundReviewer = await login("user-reviewer");
+  const secondReviewer = await login("user-reviewer-2");
+  assert.equal((await request("/refunds", { cookie: afterRestart })).status, 200);
+  assert.match(await (await request("/refunds", { cookie: afterRestart })).text(), /New refund request/);
+  assert.doesNotMatch(await (await request("/refunds", { cookie: refundReviewer })).text(), /New refund request/);
+  for (const cookie of [refundReviewer, auditAdmin]) assert.equal((await request("/api/refunds", { method: "POST", cookie, body: { customer: "Denied", amount: "1", reason: "Denied" } })).status, 403);
+  assert.equal((await request("/api/refunds", { method: "POST", cookie: afterRestart, requestOrigin: "https://elsewhere.example", body: {} })).status, 403);
+  assert.equal((await request("/api/refunds", { method: "POST", cookie: afterRestart, rawBody: "{" })).status, 400);
+  for (const amount of ["0", "-1", "1.001", 500.01]) assert.equal((await request("/api/refunds", { method: "POST", cookie: afterRestart, body: { customer: "Bad", amount, reason: "Bad amount" } })).status, 400);
+  async function submitRefund(amount: string) {
+    const response = await request("/api/refunds", { method: "POST", cookie: afterRestart, body: { customer: `Customer ${amount}`, amount, reason: "Duplicate charge", requestedBy: "user-admin", requiredApprovals: 1, status: "approved" } });
+    assert.equal(response.status, 201);
+    return response.json();
+  }
+  async function decideRefund(id: string, cookie: string, decision = "approve") {
+    return request(`/api/refunds/${id}/decisions`, { method: "POST", cookie, body: { decision, reviewerId: "user-admin", role: "admin" } });
+  }
+  const high = await submitRefund("500.01");
+  const low = await submitRefund("500.00");
+  for (const cookie of [afterRestart, auditAdmin]) assert.equal((await decideRefund(high.result.id, cookie)).status, 403);
+  assert.equal((await request(`/api/refunds/${high.result.id}/decisions`, { method: "POST", body: { decision: "approve" } })).status, 401);
+  assert.equal((await request(`/api/refunds/${high.result.id}/decisions`, { method: "POST", cookie: refundReviewer, requestOrigin: "https://elsewhere.example", body: { decision: "approve" } })).status, 403);
+  assert.equal((await request(`/api/refunds/${high.result.id}/decisions`, { method: "POST", cookie: refundReviewer, body: { decision: "reset" } })).status, 400);
+  assert.equal((await decideRefund("00000000-0000-4000-8000-000000000000", refundReviewer)).status, 404);
+  const initialRefunds = await request("/api/refunds", { cookie: afterRestart });
+  assert.equal(initialRefunds.headers.get("cache-control"), "no-store");
+  const initialHigh = (await initialRefunds.json()).refunds.find((row: { id: string }) => row.id === high.result.id);
+  assert.equal(initialHigh.requestedBy, "user-agent"); assert.equal(initialHigh.requiredApprovals, 2); assert.equal(initialHigh.status, "pending");
+  const firstDecision = await decideRefund(high.result.id, refundReviewer);
+  assert.equal(firstDecision.status, 200);
+  const firstDecisionResult = await firstDecision.json();
+  assert.equal(firstDecisionResult.result.status, "pending");
+  assert.equal((await decideRefund(high.result.id, refundReviewer)).status, 409);
+  assert.equal((await decideRefund(high.result.id, refundReviewer, "reject")).status, 409);
+  assert.equal((await decideRefund(high.result.id, secondReviewer)).status, 200);
+  assert.equal((await decideRefund(high.result.id, secondReviewer, "reject")).status, 409);
+  assert.equal((await decideRefund(low.result.id, secondReviewer)).status, 200);
+  assert.equal((await decideRefund(low.result.id, refundReviewer)).status, 409);
+  const rejected = await submitRefund("900.00");
+  assert.equal((await decideRefund(rejected.result.id, refundReviewer)).status, 200);
+  assert.equal((await decideRefund(rejected.result.id, secondReviewer, "reject")).status, 200);
+  assert.equal((await decideRefund(rejected.result.id, refundReviewer)).status, 409);
+  const racing = await submitRefund("1000.00");
+  const races = await Promise.all([decideRefund(racing.result.id, refundReviewer), decideRefund(racing.result.id, secondReviewer)]);
+  assert.ok(races.every((response) => response.status === 200));
+  const rows = (await (await request("/api/refunds", { cookie: auditAdmin })).json()).refunds;
+  assert.equal(rows.find((row: { id: string }) => row.id === high.result.id).approvalCount, 2);
+  assert.equal(rows.find((row: { id: string }) => row.id === low.result.id).status, "approved");
+  assert.equal(rows.find((row: { id: string }) => row.id === rejected.result.id).status, "rejected");
+  assert.equal(rows.find((row: { id: string }) => row.id === racing.result.id).approvalCount, 2);
+  assert.equal((await request("/api/refunds", { method: "PUT", cookie: afterRestart, body: { amount: "1" } })).status, 405);
+  assert.equal((await request(`/api/refunds/${high.result.id}/decisions`, { method: "DELETE", cookie: refundReviewer })).status, 405);
+  const allHistory = [];
+  let cursor: number | null = null;
+  do {
+    const page = await (await request(`/api/audit${cursor ? `?before=${cursor}` : ""}`, { cookie: auditAdmin })).json();
+    allHistory.push(...page.entries); cursor = page.nextCursor;
+  } while (cursor);
+  const creationAudit = allHistory.filter((entry) => entry.mutationId === high.mutationId);
+  assert.equal(creationAudit.length, 2); assert.ok(creationAudit.every((entry) => entry.actor.id === "user-agent"));
+  const decisionAudit = allHistory.filter((entry) => entry.mutationId === firstDecisionResult.mutationId);
+  assert.equal(decisionAudit.length, 2); assert.ok(decisionAudit.every((entry) => entry.actor.id === "user-reviewer"));
+  const stateChange = decisionAudit.find((entry) => entry.table === "approval_requests");
+  assert.equal(stateChange.before.approval_count, 0); assert.equal(stateChange.after.approval_count, 1);
+  assert.equal(stateChange.after.status, "pending");
+  assert.match((await (await request("/refunds", { cookie: secondReviewer })).text()).replace(/<!--.*?-->/g, ""), /No pending refund requests/);
+  await stop(); await start(true);
+  const refundsAfterRestart = await (await request("/api/refunds", { cookie: auditAdmin })).json();
+  assert.deepEqual(refundsAfterRestart.refunds, rows);
+  console.log("PASS refunds: role boundaries, threshold/quorum, duplicate and terminal decisions, concurrency, grouped audits, SSR, and persistence");
   console.log("All HTTP integration checks passed.");
 } finally {
   await stop();
