@@ -576,6 +576,49 @@ At 13 tools, that file becomes the place where every tool's migrations collide. 
 needs per-tool migrations (a migrations folder or registry) before tool #4 or #5. This is the
 kind of structural debt that compounds quietly as an agent adds tools fast.
 
+## Step 23 — "Not replicated" mixes three different things
+
+Guillermo's challenge: is what Devin "can't do" really a Devin limitation, or is it something
+else? We're presenting Devin, so the framing has to be honest *and* precise. Lumping everything
+under "not replicated" undersells Devin and misinforms the client. The list splits into three
+groups:
+
+**1. Not built in a 2-hour prototype, but buildable with Devin (a scope issue, not a capability
+limit).** Effort estimates assume Devin builds and an engineer reviews. They are judgment, not
+measured:
+- Real SSO (Entra ID/Okta OIDC) + SCIM provisioning: ~1–3 days including security review.
+- Per-tool roles + audited access changes: ~1–2 days.
+- Postgres + per-tool versioned migrations: ~1–2 days.
+- Deploy on their cloud (IaC, CI/CD, observability, backups): ~3–5 days.
+- Connectors: Power Apps ships 1,000+, but this client needs the handful they actually use
+  (core ledger/DB, Stripe or their processor, the KYC vendor, Slack). That's hours to a day each.
+- Feature-flag admin: same pattern as refunds/KYC. Same-day.
+
+→ Platform hardening is roughly **2–4 engineer-weeks with Devin**, one time.
+
+**2. Not a code problem: it belongs to the client whether they build with Devin, by hand, or
+with any other tool.**
+- **Operational ownership:** on-call, uptime, incident response for ~1,000 daily users.
+- **Compliance accountability:** an auditor attests *their* controls. Microsoft's certifications
+  cover Microsoft's platform, and Microsoft itself says they don't certify customer-built apps.
+  Devin can implement controls and generate evidence; it can't be the accountable party.
+- **Business decisions:** who should access what, and when a rule takes effect. Devin should
+  surface these, as it did in PR #8, not decide them, as it did in PR #7.
+
+**3. Different by design, and arguably better for a fintech.**
+- **Citizen development.** In Power Apps a non-engineer builds and ships with no code review.
+  With Devin, the same person writes a ticket in plain language, and an engineer reviews a
+  tested PR before anything ships. For a regulated company, *review before production* is a
+  feature, not a gap.
+- **DLP.** It isn't a toggle here. Its equivalent is code review, secrets management and egress
+  control. The shape is different, and so is who owns it.
+
+**Revised framing for the pitch:** Devin isn't the bottleneck. Almost everything on the gap
+list is a Devin task with an effort estimate attached. What remains is **ownership**: operations,
+compliance accountability, and decisions. Devin lowers its cost (tests, maintenance automation,
+flagged decisions) but doesn't remove it. That's the honest version, and it's also the one that
+sells, because a VP of Engineering will trust it.
+
 **Timing (reported by Guillermo):** ~40 min of prototype time so far. That covers the
 foundation, audit log, refunds, conventions, and one human fix, plus the research in parallel.
 That leaves ~80 min of the 2h budget for KYC, the change request, and wrap-up.
