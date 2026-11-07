@@ -667,6 +667,8 @@ The honesty in Steps 18, 22–24 is what makes it credible to a VP of Engineerin
 matters, and what ownership remains. That isn't a weakness in the pitch. It answers the
 VP's first objection before they raise it.
 
+**Confirmed:** the change-request session (Step 22), billed on-demand, was also XS. All four Devin sessions were XS (≤ $4 each), so ≤ ~$16 of compute for the whole prototype.
+
 **Timing (reported by Guillermo):** ~40 min of prototype time so far. That covers the
 foundation, audit log, refunds, conventions, and one human fix, plus the research in parallel.
 That leaves ~80 min of the 2h budget for KYC, the change request, and wrap-up.

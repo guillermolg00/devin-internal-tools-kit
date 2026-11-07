@@ -9,7 +9,7 @@
 | | |
 | --- | --- |
 | Wall-clock time | About 1h40m from first commit to final merge, including human review (budget: 2h) |
-| Devin compute | Every measured session was Devin's smallest size, XS: under $4 of usage each, so at most about $16 across the four sessions |
+| Devin compute | All four sessions were Devin's smallest size, XS: under $4 of usage each, so at most about $16 for the whole prototype |
 | Who wrote it | Devin opened 9 of 13 PRs. A human reviewed and merged every PR, and wrote 4 small ones (a run fix, a review pass, and docs). |
 | App #N | The KYC queue came from **one plain-language message** in a fresh session, with zero interventions during the build |
 | Change request | Compliance sign-off came from a single ticket written as a finance ops lead. It added a new role, migrated the schema in place, and **flagged** its in-flight policy decision for human review instead of making it silently. |
