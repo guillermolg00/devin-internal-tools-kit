@@ -4,12 +4,13 @@
 
 **What this is.** A prototype that answers one question: *can a fintech build its internal tools in code with Devin instead of paying for Microsoft Power Apps?* It is evidence for that decision, not a production system. Sign-in is a demo picker, storage is single-node SQLite, and nothing is deployed.
 
-**Live demo.** DEMO_URL_PLACEHOLDER. The access password is included in the submission's key-decisions one-pager. After the password, pick any fictional identity and switch roles from the top-right menu. Data is fictional and shared by everyone using the demo.
+**Live demo.** https://devin-internal-tools-kit.vercel.app. The access password is included in the submission's key-decisions one-pager. After the password, pick any fictional identity and switch roles from the top-right menu. Data is fictional and shared by everyone using the demo.
 
 | | |
 | --- | --- |
-| ![Pick a demo identity](docs/screenshots/login.png) | ![Refunds: dual approval plus compliance sign-off above $5,000](docs/screenshots/refunds.png) |
-| ![KYC queue: claims, escalation, senior second approval](docs/screenshots/kyc.png) | ![Audit log: who changed what, with before/after snapshots](docs/screenshots/audit.png) |
+| ![Password gate in front of the public demo](docs/screenshots/gate.png) | ![Pick a demo identity](docs/screenshots/login.png) |
+| ![Refunds: dual approval plus compliance sign-off above $5,000](docs/screenshots/refunds.png) | ![KYC queue: claims, escalation, senior second approval](docs/screenshots/kyc.png) |
+| ![Audit log: who changed what, with before/after snapshots](docs/screenshots/audit.png) | |
 
 **Results at a glance.**
 
