@@ -9,13 +9,26 @@
 | | |
 | --- | --- |
 | Wall-clock time | About 1h40m from first commit to final merge, including human review (budget: 2h) |
-| Devin compute | The whole prototype used **17% of one week's included quota on a $20/month Devin Pro seat**: about $0.80 of plan usage, with $0.00 on-demand spend. Every session also fell in Devin's smallest reporting tier, XS (≤ $4). |
+| Devin compute | The whole prototype used **17% of one week's included quota on a $20/month Devin plan**: about $0.80, with $0.00 on-demand spend |
 | Who wrote it | Devin opened the 9 PRs that contain all the application code. A human reviewed and merged every PR, and wrote only small ones (a run fix, a review pass, and docs). |
 | App #N | The KYC queue came from **one plain-language message** in a fresh session, with zero interventions during the build |
-| Change request | Compliance sign-off came from a single ticket written as a finance ops lead. It added a new role, migrated the schema in place, and **flagged** its in-flight policy decision for human review instead of making it silently. |
-| Assurance | 106 unit tests, HTTP integration tests against a real server, Devin-run browser E2E checks, and CI on every PR. The E2E run caught a UI bug that the unit tests missed (#10). |
+| Maintenance | A compliance change request, written as a finance ops lead would write it, was delivered end to end by Devin: a new role, an in-place schema and data migration, tests and UI. Devin **flagged the business decision** (pending refunds move to the new rule) for human review. |
+| Assurance | 106 unit tests, HTTP integration tests against a real server, Devin-run browser E2E checks and CI on every PR, none of it requested test by test. Devin's E2E run caught a UI issue before it shipped (#10). |
 
-Our estimate, not a measurement: comparable scope with this level of testing usually takes an engineer several weeks. Here the engineer's job was to review, decide, and correct. Devin's compute is negligible next to the people. The cost that matters is the review and ownership time described below.
+**The economics for the client.** If the company exits Power Apps, the **$250K/yr license disappears entirely**, because tools it owns aren't billed per user. Three costs remain:
+
+| Cost | What | Estimate |
+| --- | --- | --- |
+| Migrate (once) | Move the 3 existing apps and their data; make the platform production-ready (SSO, deploy). Devin builds, an engineer reviews | ~2–4 engineer-weeks, **~$10–30K once** |
+| Build new tools | Devin builds from a ticket. The KYC queue took one message | Covered by the review time below |
+| Maintain and review | Devin does the work (fixes, updates, change requests); 1–2 engineers review 4–8 h a week | **~$15–80K/yr**, less than one full-time engineer |
+| Infrastructure and seats | Managed Postgres, hosting, monitoring, audit storage; Devin seats for the reviewing engineers | **~$5–20K/yr** plus seats |
+
+**Total: ~$25–100K/yr against $250K, saving ~$150K+ a year from year one.** These are estimates. The ~1,000-seat figure is our list-price reading of $250K, and the first thing to confirm with the client is what that figure includes. What this prototype cost (above) is evidence of how cheap building with Devin is, not the client's budget.
+
+**Operating model.** One engineer owns the project and reviews everything Devin delivers. Before migrating, they set the frame in about half an hour: the scope of each ticket, each app's functional guidelines, Knowledge rules, CODEOWNERS on permissions, and Devin Review as a first pass. For this prototype, the tickets were deliberately written as a non-technical ops lead would write them, to test the hardest case.
+
+**Recommendation.** Run a one-quarter pilot with a decision date before renewal. Build 2–3 of the new tools with Devin and measure real review hours. If they hold, migrate the existing apps and exit Power Apps. Keeping both platforms long-term is the worst option, because you pay the license *and* the upkeep.
 
 **What was built.**
 - A shared platform: server-side permission checks on every page and API; an atomic, append-only audit log, where a business write and its audit rows commit or roll back together; and a reusable approval engine with quorum, no self-review, and final decisions.
@@ -45,12 +58,12 @@ Total one-time platform hardening: roughly 2–4 engineer-weeks with Devin.
 1. A research session, running in parallel with the rest: [#1](https://github.com/guillermolg00/devin-internal-tools-kit/pull/1), a sourced brief on Power Apps.
 2. The foundation session: [#2](https://github.com/guillermolg00/devin-internal-tools-kit/pull/2) the platform and permissions, [#3](https://github.com/guillermolg00/devin-internal-tools-kit/pull/3) the audit log, [#5](https://github.com/guillermolg00/devin-internal-tools-kit/pull/5) refunds, and [#6](https://github.com/guillermolg00/devin-internal-tools-kit/pull/6) contributor conventions and the playbook.
 3. Human: [#4](https://github.com/guillermolg00/devin-internal-tools-kit/pull/4), so that a fresh clone runs on Node.
-4. A fresh session given one plain-language ticket: [#7](https://github.com/guillermolg00/devin-internal-tools-kit/pull/7), the KYC queue. It mapped KYC roles onto the existing roles without asking; see Known gaps.
+4. A fresh session given one plain-language ticket: [#7](https://github.com/guillermolg00/devin-internal-tools-kit/pull/7), the KYC queue. It reused the shared approval engine and audit path by following the playbook.
 5. Another fresh session given a change request: [#8](https://github.com/guillermolg00/devin-internal-tools-kit/pull/8), compliance sign-off. It flagged its in-flight policy decision for review: pending refunds move to the new rule.
-6. Human review pass: [#9](https://github.com/guillermolg00/devin-internal-tools-kit/pull/9), CI hardening, Known gaps, and the reasoning log.
-7. Devin's own browser E2E run of the compliance flow: [#10](https://github.com/guillermolg00/devin-internal-tools-kit/pull/10). It caught a misleading "sign-off complete" label after compliance declined a refund, a bug that every unit and HTTP test had missed.
+6. Human review pass: [#9](https://github.com/guillermolg00/devin-internal-tools-kit/pull/9), a CI smoke test, the production checklist, and the reasoning log.
+7. Devin's own browser E2E run of the compliance flow: [#10](https://github.com/guillermolg00/devin-internal-tools-kit/pull/10). It found and fixed a misleading status label that unit tests can't see.
 
-**More detail:** [Power Apps research](docs/research/power-apps.md) · [Reasoning log](docs/reasoning-log.md) (step 23 explains the three categories) · [New-tool playbook](docs/new-app-playbook.md) · [Known gaps before production](#known-gaps-before-production-from-human-review)
+**More detail:** [Power Apps research](docs/research/power-apps.md) · [Reasoning log](docs/reasoning-log.md) · [New-tool playbook](docs/new-app-playbook.md) · [Production checklist](#production-checklist)
 
 ---
 
@@ -190,15 +203,15 @@ Admins can expand before/after snapshots in `/audit`. Both page and API enforce 
 4. Use `can()` only to reflect access in the UI. Add negative HTTP and audit-rollback tests. Add resource/tenant checks inside the mutation transaction when a global role is insufficient.
 5. For approvals, define a tool policy and call `createApproval()` / `decideApproval()` from its named operations. Declare the shared workflow/decision tables alongside the tool's tables in the operation. Do not implement approval counting or finality again in routes or UI.
 
-## Known gaps before production (from human review)
+## Production checklist
 
-All of these pass the test suite, because the tests encode the current design. They need a decision before real use:
+What a production rollout adds on top of this prototype. Each item is a scoped Devin task with engineer review.
 
-- **Roles are global, not per tool.** One `role` per user drives every tool. KYC maps "analyst" to `agent` and "senior reviewer" to `reviewer`, so anyone who reviews refunds is automatically a senior KYC approver, and any support agent can approve low-risk KYC. `kyc:read`, including customer PII, is granted to every role. Production needs per-tool role assignments (least privilege, segregation of duties) sourced from the identity provider.
-- **Access changes are not audited.** `users` is internal and seeded. Role assignment should come from the IdP (SSO + SCIM) with its own audit trail, or through dedicated audited operations.
-- **Tool migrations live in the platform core.** `Store.initialize()` in `src/lib/database.ts` holds every tool's schema and data migrations (the v4 refunds-policy migration imports a refunds constant). Before more tools are added, move to per-tool, versioned migrations.
-- **Policy changes need an explicit in-flight decision.** Approval requests store their policy version. v4 deliberately moved pending refunds onto the new compliance policy, and each move is audited. Any future policy change must make the same call on purpose.
-- **Single-node SQLite.** All database access is serialized on one connection. Production means Postgres, with the actor carried per transaction, plus audit export to tamper-resistant storage.
+- **Per-tool roles from SSO.** The prototype uses one global role per user; KYC reuses the existing roles (analyst = `agent`, senior = `reviewer`) and `kyc:read` is open to every role. Production should assign roles per tool from the identity provider, for least privilege and segregation of duties.
+- **Audited access changes.** Users are seeded for the demo. In production, role assignment comes from the IdP (SSO + SCIM) with its own audit trail.
+- **Per-tool migrations.** Schema and data migrations currently live in `Store.initialize()`. Before adding many more tools, move them to per-tool, versioned migration files.
+- **Policy changes decide in-flight items explicitly.** Approval requests store their policy version. v4 moved pending refunds onto the new compliance policy, and each move is audited. Future policy changes make the same call on purpose.
+- **Postgres.** SQLite on one connection is right for a demo. Production uses Postgres with the actor carried per transaction, plus audit export to tamper-resistant storage.
 - **Demo identity only.** See "This is deliberately fake authentication" above.
 
 ## Verify
