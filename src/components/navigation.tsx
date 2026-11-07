@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, ShieldCheck, Users, LockKeyhole, ScanLine, Undo2, ToggleLeft, Layers3, ArrowUpRight } from "lucide-react";
+import { LayoutGrid, ShieldCheck, Users, History, LockKeyhole, ScanLine, Undo2, ToggleLeft, Layers3, ArrowUpRight } from "lucide-react";
 
 export function Navigation({ isAdmin }: { isAdmin: boolean }) {
   const path = usePathname();
@@ -11,7 +11,7 @@ export function Navigation({ isAdmin }: { isAdmin: boolean }) {
     <div className="workspace-label"><span className="workspace-icon">W</span><div>Workspace<small>Internal tools kit</small></div><span className="tiny-label">DEV</span></div>
     <div className="nav-label">WORKSPACE</div>
     <nav aria-label="Workspace navigation">
-      {[{ href: "/", label: "Overview", Icon: LayoutGrid }, { href: "/access", label: "Roles & permissions", Icon: ShieldCheck }, { href: "/team", label: "Team directory", Icon: Users }].map(({ href, label, Icon }) => <Link key={href} href={href} className={`nav-link ${path === href ? "active" : ""}`} aria-current={path === href ? "page" : undefined}><Icon size={18} />{label}{href === "/team" && !isAdmin && <LockKeyhole size={13} className="nav-lock" />}</Link>)}
+      {[{ href: "/", label: "Overview", Icon: LayoutGrid }, { href: "/access", label: "Roles & permissions", Icon: ShieldCheck }, { href: "/team", label: "Team directory", Icon: Users }, { href: "/audit", label: "Audit log", Icon: History }].map(({ href, label, Icon }) => <Link key={href} href={href} className={`nav-link ${path === href ? "active" : ""}`} aria-current={path === href ? "page" : undefined}><Icon size={18} />{label}{["/team", "/audit"].includes(href) && !isAdmin && <LockKeyhole size={13} className="nav-lock" />}</Link>)}
     </nav>
     <div className="nav-label future-label">BUILD ON THIS</div>
     <div className="future-link"><ScanLine size={17} />KYC review queue<span>SOON</span></div>

@@ -47,6 +47,8 @@ try {
   assert.equal((await request("/team")).status, 307);
   assert.equal((await request("/api/note")).status, 401);
   assert.equal((await request("/api/users")).status, 401);
+  assert.equal((await request("/api/audit")).status, 401);
+  assert.equal((await request("/audit")).status, 307);
   assert.equal((await request("/api/note", { method: "PUT", body: { content: "anonymous" } })).status, 401);
   assert.equal((await request("/api/users", { cookie: "tools_session=user-admin" })).status, 401);
   assert.equal((await request("/api/session", { method: "POST", body: { userId: "missing" } })).status, 400);
@@ -60,6 +62,8 @@ try {
   assert.equal(denied.status, 403);
   assert.equal((await (await request("/api/note", { cookie: agent })).json()).content, before.content);
   assert.equal((await request("/api/users", { cookie: agent })).status, 403);
+  assert.equal((await request("/api/audit", { cookie: agent })).status, 403);
+  assert.match(await (await request("/audit", { cookie: agent })).text(), /The audit log is restricted/);
   assert.match(await (await request("/team", { cookie: agent })).text(), /This space has a boundary/);
   assert.equal((await request("/access", { cookie: agent })).status, 200);
   console.log("PASS agent read access and server rejection of direct note/team requests, including spoofed roles");
@@ -69,6 +73,8 @@ try {
   assert.equal((await request("/api/note", { method: "PUT", cookie: reviewer, body: { content: "  Persisted integration note  " } })).status, 200);
   assert.equal((await (await request("/api/note", { cookie: reviewer })).json()).content, "Persisted integration note");
   assert.equal((await request("/api/users", { cookie: reviewer })).status, 403);
+  assert.equal((await request("/api/audit", { cookie: reviewer })).status, 403);
+  assert.match(await (await request("/audit", { cookie: reviewer })).text(), /The audit log is restricted/);
   assert.match(await (await request("/team", { cookie: reviewer })).text(), /This space has a boundary/);
   for (const content of ["", "   ", "x".repeat(1001), 123, null]) assert.equal((await request("/api/note", { method: "PUT", cookie: reviewer, body: { content } })).status, 400);
   assert.equal((await request("/api/note", { method: "PUT", cookie: reviewer, rawBody: "{" })).status, 400);
@@ -80,6 +86,29 @@ try {
   assert.equal(team.status, 200); assert.equal((await team.json()).users.length, 3);
   assert.equal(team.headers.get("cache-control"), "no-store");
   assert.match(await (await request("/team", { cookie: admin })).text(), /Workspace members/);
+  const audit = await request("/api/audit", { cookie: admin });
+  assert.equal(audit.status, 200);
+  assert.equal(audit.headers.get("cache-control"), "no-store");
+  const history = await audit.json();
+  assert.equal(history.entries.length, 2);
+  assert.equal(history.entries[0].actor.id, "user-reviewer");
+  assert.equal(history.entries[0].actor.role, "reviewer");
+  assert.equal(history.entries[0].before.content, before.content);
+  assert.equal(history.entries[0].after.content, "Persisted integration note");
+  assert.equal(history.entries[0].operation, "update");
+  assert.equal(history.entries[1].action, "system.seed");
+  assert.match(await (await request("/audit", { cookie: admin })).text(), /Inspect before &amp; after/);
+  for (const cursor of ["0", "-1", "abc", "1.2", "9007199254740992"]) assert.equal((await request(`/api/audit?before=${cursor}`, { cookie: admin })).status, 400);
+  assert.equal((await request("/api/audit", { method: "DELETE", cookie: admin })).status, 405);
+  assert.equal((await request("/api/audit", { method: "PUT", cookie: admin, body: {} })).status, 405);
+  for (let i = 0; i < 22; i++) assert.equal((await request("/api/note", { method: "PUT", cookie: admin, body: { content: `Audit page ${i}` } })).status, 200);
+  const firstPage = await (await request("/api/audit", { cookie: admin })).json();
+  const secondPage = await (await request(`/api/audit?before=${firstPage.nextCursor}`, { cookie: admin })).json();
+  assert.equal(firstPage.entries.length, 20);
+  assert.equal(secondPage.entries.length, 4);
+  assert.equal(new Set([...firstPage.entries, ...secondPage.entries].map((entry: { id: number }) => entry.id)).size, 24);
+  assert.match(await (await request(`/audit?before=${firstPage.nextCursor}`, { cookie: admin })).text(), /Latest entries/);
+  console.log("PASS admin-only audit page/API, exact snapshots and actor attribution, rejected-write exclusion, and pagination");
   assert.equal((await request("/api/note", { method: "PUT", cookie: admin, body: { content: "Admin persisted note" } })).status, 200);
   assert.equal((await request("/api/session", { method: "DELETE", cookie: admin })).status, 200);
   assert.equal((await request("/api/users", { cookie: admin })).status, 401);
@@ -94,6 +123,9 @@ try {
   await stop(); await start(true);
   const afterRestart = await login("user-agent");
   assert.equal((await (await request("/api/note", { cookie: afterRestart })).json()).content, "Admin persisted note");
+  const auditAdmin = await login("user-admin");
+  const persistedAudit = await (await request("/api/audit", { cookie: auditAdmin })).json();
+  assert.equal(persistedAudit.entries[0].after.content, "Admin persisted note");
   console.log("PASS SQLite persistence across server restarts");
   console.log("All HTTP integration checks passed.");
 } finally {

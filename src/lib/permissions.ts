@@ -6,6 +6,7 @@ export const permissions = {
   "workspace:read": { label: "View the workspace", description: "Access shared workspace data", roles },
   "note:write": { label: "Edit the workspace note", description: "Update the shared demo note", roles: ["reviewer", "admin"] },
   "users:read": { label: "View team directory", description: "Access the protected member list", roles: ["admin"] },
+  "audit:read": { label: "Browse the audit log", description: "Inspect business changes and before/after snapshots", roles: ["admin"] },
 } as const satisfies Record<string, { label: string; description: string; roles: readonly Role[] }>;
 
 export type Permission = keyof typeof permissions;

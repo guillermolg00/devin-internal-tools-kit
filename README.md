@@ -24,6 +24,8 @@ Optional configuration is documented in `.env.example`. Set `DATABASE_PATH` to u
 | Sam Rivera | reviewer | Yes | Yes | No |
 | Jordan Lee | admin | Yes | Yes | Yes |
 
+Only admins can also browse `/audit` and `GET /api/audit`.
+
 Switch users from the top-right identity menu or sign out to return to the picker. The access page includes the policy matrix and a button that calls the admin-only API directly.
 
 ### This is deliberately fake authentication
@@ -48,21 +50,34 @@ src/app/api/             Session endpoints and guarded note / user endpoints
 src/components/          Navigation, role switcher, note editor, permission probe
 src/lib/permissions.ts   Typed roles, permission map, can(), authorize()
 src/lib/auth.ts          Server-only session lookup and request/page guards
-src/lib/database.ts      Server-only SQLite access, schema, seeds, sessions
+src/lib/database.ts      Private SQLite client, atomic mutations, read access, sessions
+src/lib/audit-schema.ts  Audited-table declarations and generated SQL protections
+src/lib/mutations.ts     Typed business mutation registry and input validation
 src/lib/http.ts          Same-origin mutation check and consistent API errors
 tests/unit/              Policy, seeding, session, and persistence regression tests
 tests/integration.ts     Real HTTP checks against a production build
 ```
 
-SQLite is accessed with `@libsql/client` using a local `file:` URL; **no Turso account or network database is used**. Queries are parameterized. The initial schema is created transactionally on first use. Add versioned migrations before evolving an existing database schema.
+SQLite is accessed with `@libsql/client` using a local `file:` URL; **no Turso account or network database is used**. Queries are parameterized. Initialization applies audit schema version 1 and generates table protections transactionally. Existing notes become one explicitly labelled system baseline; no old values or actors are invented. Fresh notes are recorded as system seeds. Reopening the database neither reseeds nor duplicates the baseline. Future structural table changes still need their own migrations.
+
+## Atomic business auditing
+
+`Store.mutate(name, actorId, input)` is the only exposed business-write API. The HTTP handler obtains the actor ID from the server session, never from the request body. Inside a `BEGIN IMMEDIATE` transaction it reloads the actor, checks the registered mutation's permission, validates input, establishes a transaction-scoped context, and performs the change. Generated SQLite triggers append exact `OLD`/`NEW` snapshots. The write and audit commit together. Any exception, including an audit insert failure or a missing audit entry, rolls the entire transaction back; the context is cleared before commit. No raw client or arbitrary SQL callback is exposed, and lint rejects direct database-driver imports outside database internals.
+
+Each entry records a stable sequence ID, mutation UUID, database-generated UTC timestamp, actor ID/name/email/role **as they were at the time**, action, table, primary-key identity, operation, and the declared before/after columns. Actor snapshots have no foreign-key cascade to live users. A deletion has no after-record; an insertion has no before-record. A baseline only says what existed when audit capture began, not who originally changed it.
+
+SQLite triggers reject direct business row writes without a matching mutation context and reject audit-row UPDATE, DELETE, UPSERT, and REPLACE attempts. Audit INSERT also requires a matching context; log replacement protection does not rely on a connection's `recursive_triggers` setting. Business primary keys are immutable. Application connections enable recursive triggers to capture cascaded changes. Unknown business tables cause initialization to fail unless declared for auditing. The explicitly excluded internal tables are user/session provisioning, audit infrastructure, and migration metadata; tokens and session bookkeeping never enter business snapshots. User/role administration is not yet a supported mutation workflow and would need dedicated audited operations before production.
+
+**Boundary:** SQLite has no separate untrusted-DML role here. A person with arbitrary SQL/file ownership can forge the internal context, drop triggers, or replace the file. These controls prevent ordinary row tampering and accidental application bypass; they are not protection against the database owner, cryptographic integrity, WORM storage, or a compliance certification. Production requires trusted authentication, restricted filesystem/database access, and independently retained audit copies. Snapshot declarations must exclude secrets and select appropriate retention-sensitive data.
+
+Admins can expand before/after snapshots in `/audit`. Both page and API enforce `audit:read` on the server. Entries use ID-based pagination (20 at a time, newest first); `?before=<positive ID>` retrieves older rows without offset pagination shifting under new writes. There are no edit/delete audit endpoints.
 
 ### Adding a tool
 
-1. Add its permissions to `src/lib/permissions.ts`, explicitly granting allowed roles.
-2. Put its page beneath `src/app/(workspace)/` to reuse the shell. Resolve the server user and call `authorize()` before fetching protected data. The directory page shows an access-denied state without reading its protected data.
-3. In **each** API handler, call `requirePermission()` before data access. On mutations, also call `checkOrigin()`, validate input, and use parameterized queries. Return 401 for missing/invalid sessions and 403 for insufficient permission.
-4. Use `can()` only to reflect access in the UI, never as a substitute for the server check.
-5. Add negative HTTP tests, including direct requests made without the UI. Add resource-level checks when the permission is narrower than a global role.
+1. Create its table with an explicit primary key in a schema migration. Add **one** declaration to `auditedTables` in `src/lib/audit-schema.ts`, for example `{ table: "refunds", columns: ["id", "amount", "status"] }`. Primary keys (including composite keys) are discovered automatically. All INSERT/UPDATE/DELETE guard and snapshot triggers are generated; **do not hand-write triggers**. Columns must exist and be JSON-compatible. Only the declared columns are snapshotted.
+2. Add permissions to `src/lib/permissions.ts` and a named operation to `src/lib/mutations.ts` with its target table, permission, input validator, and parameterized statement. Route its writes through `Store.mutate()`; do not add unaudited write methods or expose the client. A second-table test proves the declaration-based generator works without note-specific SQL.
+3. Put its page beneath `src/app/(workspace)/`. Authorize server-side before protected reads. In **each** API handler, independently call `requirePermission()`; for mutations also call `checkOrigin()` and pass the server user's ID to `mutate()`, never a body-supplied actor. Input and authorization checks repeat inside the transaction.
+4. Use `can()` only to reflect access in the UI. Add negative HTTP and audit-rollback tests. Add resource/tenant checks inside the mutation transaction when a global role is insufficient.
 
 ## Verify
 
