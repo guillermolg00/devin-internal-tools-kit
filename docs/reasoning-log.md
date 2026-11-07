@@ -1,6 +1,6 @@
 # Reasoning Log — Power Apps vs. Devin (build vs. buy)
 
-Running log of how the problem was framed and how each decision was made, in order.
+Running log of how the problem was framed and how each decision was made, in order. It's the raw working trail, including the deliberate worst-case tests (tickets written as a non-technical ops lead) and what review found. The README holds the summary and the client-facing economics.
 Started: 2026-11-07.
 
 ---
@@ -679,6 +679,85 @@ VP's first objection before they raise it.
   Enterprise pricing for the client would be different. The order of magnitude is the point:
   **under a dollar of compute**, against an estimated several engineer-weeks for comparable
   scope.
+
+## Step 26 — Three corrections to the pessimistic reading (Guillermo)
+
+**1. Most of Devin's mistakes came from how we asked, on purpose.** Every ticket after the
+foundation was written as a non-technical ops or finance lead, with no architecture hints. That
+was deliberate: it's the hardest, most realistic test of "can non-engineers drive this". The
+KYC role mapping came straight from an ambiguous ticket ("a senior reviewer") that never said
+whether it was a new role. An engineer writing the same ticket would have said "add a
+`kyc_senior` role; don't reuse `reviewer`". With engineer-written tickets plus Knowledge rules
+(see Step 20), this class of error drops sharply.
+*Honest caveat:* not every issue was prompt-driven. The Bun deviation happened even though the
+prompt said npm, and the CI blind spot is structural. Those are why review and Knowledge rules
+still matter.
+
+**2. Maintenance doesn't need a team, because Devin does the maintenance work.** The change
+request (PR #8) *is* maintenance, and Devin did all of it: a new role, a schema migration, a
+data migration of in-flight items, tests and UI. Devin also auto-fixes CI on its own PRs. The
+human part was review, measured in minutes per PR. That changes Step 8's model, which assumed
+humans do the maintenance:
+
+| Scenario | Human time | $/yr (at $75–100/h) |
+|---|---|---|
+| Step 8, human-maintained | 8 h/app/month + 0.25 FTE platform | ~$142–185K |
+| **Devin-maintained, human reviews** | ~1 h/app/month review + ~0.25 FTE platform | **~$50–65K** |
+
+Against $250K/yr, the savings move from ~$65–110K to **~$185–200K/yr**. This is a scenario
+grounded in the review times observed here, not a measurement over months. The pilot exists to
+confirm it. Ownership is roughly **one engineer part-time**, not a team.
+
+**3. The curve favors building.** Model quality, speed and cost have improved dramatically within
+months over the past year. Each step makes Devin's output better and a skilled reviewer's job
+faster and safer. Power Apps licensing moves the other way: the research brief cites Microsoft's
+announced Premium increase from $20 to $22 per user per month in 2027. That figure comes from the
+brief's source; we haven't independently verified it. **One cost curve trends down and the other
+trends up.** That's a forward-looking argument and should be presented as one, but it's a strong
+reason to start the pilot now rather than at the next renewal.
+
+## Step 27 — The economics, simplified (Guillermo)
+
+We over-complicated it with plans, quotas and seat math. The case is simple:
+
+**Exit Power Apps and the $250K license disappears completely.** The tools are owned, so the
+people who use them need no per-seat license. Three costs remain:
+
+| Cost | What | Estimate |
+|---|---|---|
+| 1. Migrate (one-time) | Move the 3 apps + data, harden the platform (SSO, deploy). Devin builds, an engineer reviews | ~2–4 engineer-weeks: **~$10–30K once** |
+| 2. Build new tools | Devin builds from a ticket (KYC: one message) | Covered by the review hours below |
+| 3. Maintain + review | Devin fixes, updates and changes; engineers review and decide | 1–2 engineers × 4–8 h/week: **~$15–80K/yr**, well under one FTE (~$150K) |
+| + Infra | Managed Postgres (HA, backups), app hosting, logs/monitoring, tamper-resistant audit storage. SSO usually rides on the IdP they already pay for | **~$5–20K/yr** |
+| + Devin seats | For the 1–2 engineers who own the tools | Small next to the above |
+
+**Result: ~$25–100K/yr all-in (review + infra + seats, plus a one-time migration) instead of $250K,
+so roughly $150K+/yr saved from year one**, and the existing engineering team barely notices it. What makes maintenance cheap is
+**clear review workflows** (Knowledge rules, CODEOWNERS on permissions, Devin Review). That is the
+part worth investing in.
+
+**On "plans":** what this prototype cost on a personal Devin plan is *evidence* of how little the
+build itself costs (under a dollar of compute). It is not part of the client's cost model. The
+client pays for Devin seats for the 1–2 engineers who own the tools, and that's it.
+
+**Two one-line caveats:**
+- The license only disappears on a **full exit**.
+- The ~1,000-user figure is our list-price inference from $250K, not a given. The first question
+  for the client is what the $250K actually includes. The conclusion holds either way: if part of
+  it is per-app or capacity charges, the 10 new tools would make Power Apps *more* expensive,
+  which strengthens the build case.
+
+## Step 28 — Final framing for the deliverables
+
+- **Economics:** the three-cost model from Step 27 (migrate once; build; maintain and review) plus
+  infrastructure. Exiting Power Apps removes the $250K license; ~$25–100K/yr remains; ~$150K+/yr saved.
+- **Errors are not the story.** Engineer review is assumed. The issues in this log come from a
+  deliberate worst-case setup (non-technical tickets, 2-hour budget). With scoped tickets,
+  functional guidelines and a review frame set up in ~30 minutes, the error margin drops sharply.
+  Deliverables present this as an **operating model**, not a list of mistakes. The detail stays here.
+- **Prototype cost is evidence, not budget:** 17% of a weekly quota on a $20/month plan (~$0.80)
+  shows how cheap the build is; the client's cost is seats for 1–2 reviewing engineers.
+- README, one-pager and Loom script were aligned to this framing.
 
 **Timing (reported by Guillermo):** ~40 min of prototype time so far. That covers the
 foundation, audit log, refunds, conventions, and one human fix, plus the research in parallel.
