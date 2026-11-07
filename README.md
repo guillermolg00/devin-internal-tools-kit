@@ -6,13 +6,13 @@ The KYC queue, refunds dashboard, and feature-flag admin are **future modules**,
 
 ## Run
 
-Install [Bun](https://bun.sh/docs/installation) (verified with 1.4.4), then:
+Requires Node.js 22+. Either package manager works:
 
 ```sh
-bun install && bun run dev
+npm install && npm run dev      # or: bun install && bun run dev
 ```
 
-Open http://localhost:3000 and choose a demo user. No environment file, external service, Node installation, manual migration, or seed command is required. The first database access creates `data/internal-tools.db`, sets up the schema, and seeds fictional users and a note. Setup is idempotent and never overwrites existing notes or roles. Bun executes Next.js itself, not just the package scripts.
+Open http://localhost:3000 and choose a demo user. No environment file, external service, manual migration, or seed command is required. Next.js runs on Node in both cases; Bun is only required for the test suite (`bun run test`, `bun run test:integration`). The first database access creates `data/internal-tools.db`, sets up the schema, and seeds fictional users and a note. Setup is idempotent and never overwrites existing notes or roles.
 
 Optional configuration is documented in `.env.example`. Set `DATABASE_PATH` to use another SQLite file. The directory is created automatically. Stop the app and delete its database file to reset the sandbox; the next access recreates it. Database files, sessions, environment files, and build output are ignored by git.
 
