@@ -639,6 +639,36 @@ Step 23. It is honest: it states the KYC role mapping, marks "not estimated" whe
 have no figure, and declines to invent numbers. Its list stops at #9 because #10 was still open
 at the time.
 
+## Step 25 — Final review and the pitch frame
+
+**Final state of `main`:**
+- 13 PRs: 9 opened by Devin, 4 small ones by a human (a run fix, a review pass, docs). A human
+  reviewed and merged every one.
+- 106 unit tests plus the HTTP integration suite pass; build, fresh-clone `npm` and `bun` runs,
+  and CI including the dev-server smoke test are green.
+- Repo timeline: 09:58 → 11:36, about 1h40m wall clock including review. Within the 2h budget.
+
+**Deliberately not done:** reformatting Devin's dense JSX with Prettier. It would make the code
+easier to read, but a human commit across every UI file would blur `git blame`, and the point
+of the repo is to show what Devin wrote. Documented as a finding instead (Step 24).
+
+**The pitch frame, agreed with Guillermo.** This is a demo of Devin, and the goal is to show
+what it does for this client:
+- **Cheap:** about $4 or less per session, roughly $16 for the whole prototype. Compute is a
+  rounding error next to people.
+- **Fast:** platform + 2 tools + a compliance change in under 2 hours. A new tool from one
+  message.
+- **Safe:** tests at every layer, written without being asked; E2E catching what unit tests
+  miss; decisions flagged for humans (PR #8).
+- **Lighter for developers:** the engineer reviews, decides and corrects instead of writing
+  boilerplate, migrations and test scaffolding. The work shifts toward judgment.
+
+The honesty in Steps 18, 22–24 is what makes it credible to a VP of Engineering: where review
+matters, and what ownership remains. That isn't a weakness in the pitch. It answers the
+VP's first objection before they raise it.
+
+**Confirmed:** the change-request session (Step 22), billed on-demand, was also XS. All four Devin sessions were XS (≤ $4 each), so ≤ ~$16 of compute for the whole prototype.
+
 **Timing (reported by Guillermo):** ~40 min of prototype time so far. That covers the
 foundation, audit log, refunds, conventions, and one human fix, plus the research in parallel.
 That leaves ~80 min of the 2h budget for KYC, the change request, and wrap-up.

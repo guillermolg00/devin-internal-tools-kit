@@ -4,6 +4,19 @@
 
 **What this is.** A prototype that answers one question: *can a fintech build its internal tools in code with Devin instead of paying for Microsoft Power Apps?* It is evidence for that decision, not a production system. Sign-in is a demo picker, storage is single-node SQLite, and nothing is deployed.
 
+**Results at a glance.**
+
+| | |
+| --- | --- |
+| Wall-clock time | About 1h40m from first commit to final merge, including human review (budget: 2h) |
+| Devin compute | All four sessions were Devin's smallest size, XS: under $4 of usage each, so at most about $16 for the whole prototype |
+| Who wrote it | Devin opened 9 of 13 PRs. A human reviewed and merged every PR, and wrote 4 small ones (a run fix, a review pass, and docs). |
+| App #N | The KYC queue came from **one plain-language message** in a fresh session, with zero interventions during the build |
+| Change request | Compliance sign-off came from a single ticket written as a finance ops lead. It added a new role, migrated the schema in place, and **flagged** its in-flight policy decision for human review instead of making it silently. |
+| Assurance | 106 unit tests, HTTP integration tests against a real server, Devin-run browser E2E checks, and CI on every PR. The E2E run caught a UI bug that the unit tests missed (#10). |
+
+Our estimate, not a measurement: comparable scope with this level of testing usually takes an engineer several weeks. Here the engineer's job was to review, decide, and correct. Devin's compute is negligible next to the people. The cost that matters is the review and ownership time described below.
+
 **What was built.**
 - A shared platform: server-side permission checks on every page and API; an atomic, append-only audit log, where a business write and its audit rows commit or roll back together; and a reusable approval engine with quorum, no self-review, and final decisions.
 - On top of the platform: a refunds dashboard and a KYC review queue.
