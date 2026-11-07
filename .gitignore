@@ -1,0 +1,11 @@
+node_modules/
+.next/
+next-env.d.ts
+data/
+*.db
+*.db-shm
+*.db-wal
+*.tsbuildinfo
+.env*
+!.env.example
+coverage/

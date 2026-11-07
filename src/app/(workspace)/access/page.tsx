@@ -1,0 +1,11 @@
+import { Check, Minus, ShieldCheck, Info } from "lucide-react";
+import { pageUser } from "@/lib/auth";
+import { can, permissions, roles, type Permission } from "@/lib/permissions";
+import { PermissionProbe } from "@/components/permission-probe";
+
+export const metadata = { title: "Roles & permissions" };
+
+export default async function AccessPage() {
+  const user = await pageUser();
+  return <><div className="page-heading"><div><div className="eyebrow">ACCESS CONTROL</div><h1>Clear roles. Real boundaries.</h1><p>One permission map, enforced by the server and reflected in the interface.</p></div><span className={`role-badge ${user.role}`}>Viewing as {user.role}</span></div><section className="panel matrix-panel"><div className="panel-heading"><div><ShieldCheck size={19} /><h2>Permission matrix</h2></div><span className="subtle-badge">DENY BY DEFAULT</span></div><div className="table-scroll"><table className="permission-table"><thead><tr><th scope="col">Capability</th>{roles.map((role) => <th key={role} scope="col"><span className={`role-badge ${role}`}>{role}</span>{role === user.role && <small>Your current role</small>}</th>)}</tr></thead><tbody>{(Object.keys(permissions) as Permission[]).map((permission) => <tr key={permission}><th scope="row">{permissions[permission].label}<small>{permissions[permission].description}</small><code>{permission}</code></th>{roles.map((role) => <td key={role}>{can({ role }, permission) ? <span className="matrix-yes"><Check size={18} /><span className="sr-only">Allowed</span></span> : <span className="matrix-no"><Minus size={18} /><span className="sr-only">Not allowed</span></span>}</td>)}</tr>)}</tbody></table></div><div className="matrix-info"><Info size={16} />Changing a button or sending a different role in a request won’t change your access. Your role is loaded from SQLite on every request.</div></section><PermissionProbe /><div className="security-note"><ShieldCheck size={21} /><div><h3>Demo identities, not production authentication</h3><p>Anyone in this sandbox can intentionally switch to any seeded role. Replace the demo session endpoint with your identity provider before using real data. The shared authorization layer is the part you keep.</p></div></div></>;
+}
