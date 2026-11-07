@@ -680,6 +680,42 @@ VP's first objection before they raise it.
   **under a dollar of compute**, against an estimated several engineer-weeks for comparable
   scope.
 
+## Step 26 — Three corrections to the pessimistic reading (Guillermo)
+
+**1. Most of Devin's mistakes came from how we asked, on purpose.** Every ticket after the
+foundation was written as a non-technical ops or finance lead, with no architecture hints. That
+was deliberate: it's the hardest, most realistic test of "can non-engineers drive this". The
+KYC role mapping came straight from an ambiguous ticket ("a senior reviewer") that never said
+whether it was a new role. An engineer writing the same ticket would have said "add a
+`kyc_senior` role; don't reuse `reviewer`". With engineer-written tickets plus Knowledge rules
+(see Step 20), this class of error drops sharply.
+*Honest caveat:* not every issue was prompt-driven. The Bun deviation happened even though the
+prompt said npm, and the CI blind spot is structural. Those are why review and Knowledge rules
+still matter.
+
+**2. Maintenance doesn't need a team, because Devin does the maintenance work.** The change
+request (PR #8) *is* maintenance, and Devin did all of it: a new role, a schema migration, a
+data migration of in-flight items, tests and UI. Devin also auto-fixes CI on its own PRs. The
+human part was review, measured in minutes per PR. That changes Step 8's model, which assumed
+humans do the maintenance:
+
+| Scenario | Human time | $/yr (at $75–100/h) |
+|---|---|---|
+| Step 8, human-maintained | 8 h/app/month + 0.25 FTE platform | ~$142–185K |
+| **Devin-maintained, human reviews** | ~1 h/app/month review + ~0.25 FTE platform | **~$50–65K** |
+
+Against $250K/yr, the savings move from ~$65–110K to **~$185–200K/yr**. This is a scenario
+grounded in the review times observed here, not a measurement over months. The pilot exists to
+confirm it. Ownership is roughly **one engineer part-time**, not a team.
+
+**3. The curve favors building.** Model quality, speed and cost have improved dramatically within
+months over the past year. Each step makes Devin's output better and a skilled reviewer's job
+faster and safer. Power Apps licensing moves the other way: the research brief cites Microsoft's
+announced Premium increase from $20 to $22 per user per month in 2027. That figure comes from the
+brief's source; we haven't independently verified it. **One cost curve trends down and the other
+trends up.** That's a forward-looking argument and should be presented as one, but it's a strong
+reason to start the pilot now rather than at the next renewal.
+
 **Timing (reported by Guillermo):** ~40 min of prototype time so far. That covers the
 foundation, audit log, refunds, conventions, and one human fix, plus the research in parallel.
 That leaves ~80 min of the 2h budget for KYC, the change request, and wrap-up.
