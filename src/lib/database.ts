@@ -1,13 +1,14 @@
 import "server-only";
-import { createClient, type Client } from "@libsql/client";
+import { createClient, type Client, type Transaction } from "@libsql/client";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { authorize, type User } from "./permissions";
+import { authorize, roles, type User } from "./permissions";
 import { auditedTables, installAuditing, systemContext } from "./audit-schema";
 import { mutations, type MutationName } from "./mutations";
 import { AUDIT_PAGE_SIZE, type AuditEntry } from "./audit";
 import type { Refund } from "./refund-types";
+import { COMPLIANCE_SIGNOFF_ABOVE_CENTS } from "./refunds";
 import type { KycCase } from "./kyc-types";
 
 export const SESSION_SECONDS = 60 * 60 * 8;
@@ -16,8 +17,19 @@ export const demoUsers: User[] = [
   { id: "user-agent-2", name: "Casey Chen", email: "casey@example.test", role: "agent" },
   { id: "user-reviewer", name: "Sam Rivera", email: "sam@example.test", role: "reviewer" },
   { id: "user-reviewer-2", name: "Priya Shah", email: "priya@example.test", role: "reviewer" },
+  { id: "user-compliance", name: "Morgan Ellis", email: "morgan@example.test", role: "compliance" },
   { id: "user-admin", name: "Jordan Lee", email: "jordan@example.test", role: "admin" },
 ];
+
+const usersTable = (name: string) => `CREATE TABLE ${name} (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL CHECK (role IN (${roles.map((role) => `'${role}'`).join(", ")}))
+)`;
+
+async function addColumn(tx: Transaction, table: string, column: string, definition: string) {
+  const columns = await tx.execute(`PRAGMA table_info(${table})`);
+  if (!columns.rows.some((row) => row.name === column)) await tx.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
@@ -39,17 +51,31 @@ export class Store {
     return pending;
   }
 
+  // SQLite cannot alter a CHECK constraint, so a new role rebuilds the users table with foreign keys off.
+  private async migrateUserRoles() {
+    const [existing] = (await this.#client.execute("SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'users'")).rows;
+    if (!existing || roles.every((role) => String(existing.sql).includes(`'${role}'`))) return;
+    await this.#client.execute("PRAGMA foreign_keys = OFF");
+    const tx = await this.#client.transaction("write");
+    try {
+      await tx.execute(usersTable("users_next"));
+      await tx.execute("INSERT INTO users_next (id, name, email, role) SELECT id, name, email, role FROM users");
+      await tx.execute("DROP TABLE users");
+      await tx.execute("ALTER TABLE users_next RENAME TO users");
+      if ((await tx.execute("PRAGMA foreign_key_check")).rows.length) throw new Error("User role migration broke a foreign key");
+      await tx.commit();
+    } finally { tx.close(); }
+  }
+
   private async initialize() {
+    await this.migrateUserRoles();
     await this.#client.execute("PRAGMA foreign_keys = ON");
     await this.#client.execute("PRAGMA busy_timeout = 5000");
     await this.#client.execute("PRAGMA recursive_triggers = ON");
     const tx = await this.#client.transaction("write");
     try {
       await tx.batch([
-        `CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE,
-          role TEXT NOT NULL CHECK (role IN ('agent', 'reviewer', 'admin'))
-        )`,
+        usersTable("IF NOT EXISTS users"),
         `CREATE TABLE IF NOT EXISTS sessions (
           token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
           expires_at INTEGER NOT NULL
@@ -62,6 +88,7 @@ export class Store {
           id TEXT PRIMARY KEY, resource_type TEXT NOT NULL, resource_id TEXT NOT NULL,
           requested_by TEXT NOT NULL REFERENCES users(id), policy_key TEXT NOT NULL, policy_version INTEGER NOT NULL,
           required_approvals INTEGER NOT NULL CHECK (required_approvals >= 1),
+          signoff_required INTEGER NOT NULL DEFAULT 0 CHECK (signoff_required IN (0, 1)),
           approval_count INTEGER NOT NULL DEFAULT 0 CHECK (approval_count >= 0 AND approval_count <= required_approvals),
           status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
           created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -71,6 +98,7 @@ export class Store {
         `CREATE TABLE IF NOT EXISTS approval_decisions (
           id TEXT PRIMARY KEY, approval_id TEXT NOT NULL REFERENCES approval_requests(id),
           reviewer_id TEXT NOT NULL REFERENCES users(id), decision TEXT NOT NULL CHECK (decision IN ('approve', 'reject')),
+          capacity TEXT NOT NULL DEFAULT 'review' CHECK (capacity IN ('review', 'signoff')),
           decided_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
           UNIQUE (approval_id, reviewer_id)
         )`,
@@ -97,9 +125,24 @@ export class Store {
           args: [user.id, user.name, user.email, user.role],
         })),
       ]);
+      await addColumn(tx, "approval_requests", "signoff_required", "INTEGER NOT NULL DEFAULT 0 CHECK (signoff_required IN (0, 1))");
+      await addColumn(tx, "approval_decisions", "capacity", "TEXT NOT NULL DEFAULT 'review' CHECK (capacity IN ('review', 'signoff'))");
       await installAuditing(tx);
       await tx.execute("INSERT OR IGNORE INTO schema_migrations VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
       await tx.execute("INSERT OR IGNORE INTO schema_migrations VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
+      if (!(await tx.execute("SELECT 1 FROM schema_migrations WHERE version = 4")).rows.length) {
+        // Compliance sign-off above $5,000 is effective immediately, so pending v1 refunds move to the v2 policy.
+        await systemContext(tx, "approval_requests", "system.migration.refund-compliance-signoff");
+        await tx.execute({
+          sql: `UPDATE approval_requests SET policy_version = 2,
+              signoff_required = (SELECT r.amount_cents > ? FROM refund_requests r WHERE r.id = approval_requests.resource_id),
+              updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE resource_type = 'refund' AND policy_key = 'refunds' AND policy_version = 1 AND status = 'pending'`,
+          args: [COMPLIANCE_SIGNOFF_ABOVE_CENTS],
+        });
+        await tx.execute("DELETE FROM audit_context");
+        await tx.execute("INSERT INTO schema_migrations VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
+      }
       await systemContext(tx, "workspace_note", "system.seed");
       await tx.execute({ sql: "INSERT INTO workspace_note SELECT 1, ?, NULL, ? WHERE NOT EXISTS (SELECT 1 FROM workspace_note WHERE id = 1)", args: ["A shared starting point for better internal tools. Switch roles to see server-side permissions in action.", new Date().toISOString()] });
       await tx.execute("DELETE FROM audit_context");
@@ -109,7 +152,7 @@ export class Store {
 
   async users(): Promise<User[]> {
     await this.ready;
-    const result = await this.#run(() => this.#client.execute("SELECT id, name, email, role FROM users ORDER BY CASE role WHEN 'agent' THEN 1 WHEN 'reviewer' THEN 2 ELSE 3 END"));
+    const result = await this.#run(() => this.#client.execute("SELECT id, name, email, role FROM users ORDER BY CASE role WHEN 'agent' THEN 1 WHEN 'reviewer' THEN 2 WHEN 'compliance' THEN 3 ELSE 4 END"));
     return result.rows as unknown as User[];
   }
 
@@ -185,9 +228,9 @@ export class Store {
     await this.ready;
     const result = await this.#run(() => this.#client.execute(`
       SELECT r.*, a.requested_by, u.name AS requester_name, a.status, a.required_approvals,
-        a.approval_count, a.created_at, a.updated_at,
+        a.signoff_required, a.approval_count, a.created_at, a.updated_at,
         (SELECT json_group_array(json_object('reviewerId', d.reviewer_id, 'reviewerName', reviewer.name,
-          'decision', d.decision, 'decidedAt', d.decided_at))
+          'decision', d.decision, 'capacity', d.capacity, 'decidedAt', d.decided_at))
          FROM approval_decisions d JOIN users reviewer ON reviewer.id = d.reviewer_id
          WHERE d.approval_id = a.id) AS decisions_json
       FROM refund_requests r JOIN approval_requests a ON a.id = r.approval_id
@@ -197,7 +240,7 @@ export class Store {
     return result.rows.map((row) => ({
       id: String(row.id), customer: String(row.customer), amountCents: Number(row.amount_cents), reason: String(row.reason),
       requestedBy: String(row.requested_by), requesterName: String(row.requester_name), status: row.status as Refund["status"],
-      approvalCount: Number(row.approval_count), requiredApprovals: Number(row.required_approvals),
+      approvalCount: Number(row.approval_count), requiredApprovals: Number(row.required_approvals), signoffRequired: Number(row.signoff_required) === 1,
       createdAt: String(row.created_at), updatedAt: String(row.updated_at), decisions: JSON.parse(String(row.decisions_json)),
     }));
   }

@@ -24,11 +24,12 @@ Optional configuration is documented in `.env.example`. Set `DATABASE_PATH` to u
 | Casey Chen | agent | Yes | No | No |
 | Sam Rivera | reviewer | Yes | Yes | No |
 | Priya Shah | reviewer | Yes | Yes | No |
+| Morgan Ellis | compliance | Yes | No | No |
 | Jordan Lee | admin | Yes | Yes | Yes |
 
 Only admins can also browse `/audit` and `GET /api/audit`.
 
-All three roles can view refunds. Only agents submit requests; only reviewers decide. Admins have read/audit access, not an approval override. The second reviewer is added automatically to existing databases without changing existing users or roles.
+All roles can view refunds. Only agents submit requests; only reviewers approve or reject them. Compliance users can only sign off (or decline) refunds above $5,000; they cannot approve or reject any refund as a reviewer. Admins have read/audit access, not an approval override. New demo users are added automatically to existing databases without changing existing users or roles; adding the compliance role rebuilds the `users` table once to widen its role constraint, preserving users and sessions.
 
 For KYC, agents are analysts and the reviewer role is explicitly granted senior KYC review. Both can claim and decide cases; only agents submit vendor results. Admins have read/audit access only. Casey is a second analyst so a different person can review Alex’s intake. New demo users are added without changing existing identities or roles.
 
@@ -68,7 +69,7 @@ tests/unit/              Policy, seeding, session, and persistence regression te
 tests/integration.ts     Real HTTP checks against a production build
 ```
 
-SQLite is accessed with `@libsql/client` using a local `file:` URL; **no Turso account or network database is used**. Queries are parameterized. Initialization applies audit schema version 1, approval/refund schema version 2, and KYC schema version 3, generating table protections transactionally. Existing notes become one explicitly labelled system baseline; no old values or actors are invented. Fresh notes are recorded as system seeds. Reopening the database neither reseeds nor duplicates the baseline. Future structural table changes still need their own migrations.
+SQLite is accessed with `@libsql/client` using a local `file:` URL; **no Turso account or network database is used**. Queries are parameterized. Initialization applies audit schema version 1, approval/refund schema version 2, KYC schema version 3, and compliance sign-off schema version 4, generating table protections transactionally. Version 4 also moves **pending** version-1 refunds onto refund policy version 2 so the sign-off rule applies to them immediately (above $5,000 they now also need compliance; existing approvals are kept); this is one audited `system.migration.refund-compliance-signoff` update per request. Final refunds keep their original policy version. Existing notes become one explicitly labelled system baseline; no old values or actors are invented. Fresh notes are recorded as system seeds. Reopening the database neither reseeds nor duplicates the baseline. Future structural table changes still need their own migrations.
 
 ## Refunds and shared approvals
 
@@ -76,11 +77,13 @@ Open `/refunds`. Agents submit a customer name/reference, positive USD amount, a
 
 - Up to and including **$500.00**: one reviewer approval completes review.
 - **$500.01 and above**: two different reviewers must approve. The first approval leaves the request pending with progress 1/2.
+- **$5,000.01 and above**: in addition to the two reviewer approvals, someone with `refunds:compliance-signoff` (the compliance role) must sign off. The sign-off can come before or after the reviewers, never counts as a reviewer approval, and a further reviewer approval cannot replace it. A compliance decline is a rejection and is final. Exactly $5,000.00 needs no sign-off.
+- Nobody may act twice on the same request in any capacity: a reviewer who later moves to compliance cannot also sign off, and the requester cannot sign off their own request.
 - A reviewer gets one immutable decision per request. Any rejection makes a pending request final, including after a partial approval. Approval and rejection after a terminal state return `409` without changing data or generating audit noise.
 - Nobody may review their own request, even if the creator's role changes later. Role permissions are reloaded inside the write transaction; admin is not an override.
 - Concurrent decisions are serialized and re-read inside `BEGIN IMMEDIATE`, with a unique `(approval_id, reviewer_id)` constraint as defense in depth.
 
-`ApprovalPolicy<Facts>` supplies a key/version, resource type, reviewer permission, and quorum function. Refunds supplies only the amount-based rule. The shared engine owns self-review prevention, reviewer uniqueness, progress, rejection, and finality. The policy identity/version and required quorum are saved on submission, so a later rule change cannot silently change an in-flight request's quorum. Retain support for old policy versions when evolving policies; mismatched versions fail closed. A KYC-style policy test exercises the same operations with risk-based three-person approval and a different permission, without adding a KYC tool.
+`ApprovalPolicy<Facts>` supplies a key/version, resource type, reviewer permission, and quorum function, plus an optional `signoff: { permission, required(facts) }` for one extra sign-off from a separate permission. Refunds supplies only the amount-based rules (policy version 2 adds the compliance sign-off). Whether a sign-off is required is saved on submission next to the quorum, and each decision records its `capacity` (`review` or `signoff`). The shared engine owns self-review prevention, reviewer uniqueness, progress, rejection, and finality. The policy identity/version and required quorum are saved on submission, so a later rule change cannot silently change an in-flight request's quorum; deliberately applying a new rule to in-flight requests needs an explicit, audited migration (as schema version 4 does for compliance sign-off). Retain support for old policy versions when evolving policies; mismatched versions fail closed. A KYC-style policy test exercises the same operations with risk-based three-person approval and a different permission, without adding a KYC tool.
 
 Shared tables `approval_requests` and `approval_decisions` store workflow state and decisions; `refund_requests` stores fixed domain details. All three use the same one-declaration audit generator. Creation writes a workflow and a refund; review inserts a decision and updates progress/state. Each operation shares one mutation UUID across all affected audit rows. A business failure, missing audit trigger, or failed audit insert rolls back every row in the operation.
 
@@ -89,6 +92,7 @@ Shared tables `approval_requests` and `approval_decisions` store workflow state 
 - `GET /api/refunds`: authenticated list, newest first, `Cache-Control: no-store`.
 - `POST /api/refunds`: agent only; e.g. `{ "customer": "Customer 42", "amount": "500.01", "reason": "Duplicate charge" }`. Amount is a decimal **string**, not a JSON float. Returns `201` with `result.id` and `mutationId`.
 - `POST /api/refunds/:id/decisions`: reviewer only; `{ "decision": "approve" }` or `{ "decision": "reject" }`. The actor comes from the session, and the target ID from the URL. Client-supplied identities, status, and quorum are not trusted.
+- `POST /api/refunds/:id/signoff`: compliance only; `{ "decision": "approve" }` signs off, `{ "decision": "reject" }` declines. Returns `409` for refunds of $5,000.00 or less, after a sign-off already exists, or once final. The capacity is fixed by the route; a body cannot change it.
 - All writes require same-origin requests. There are no request-edit/delete or decision-edit/delete endpoints. These are approval records, **not payment execution**.
 
 ## KYC review queue
@@ -142,6 +146,6 @@ bun run build
 bun run test:integration
 ```
 
-Use `bun run test`, not bare `bun test`: the test script supplies the `react-server` condition so Bun can import modules protected by `server-only`. Integration checks start their own production server on port 3107 (`TEST_PORT` can override it), use a disposable database, and stop it afterward. They cover unauthenticated requests, forged cookies and roles, all three role boundaries, mutation validation, cross-origin rejection, session switching/logout, production demo-login gating, and persistence across server restarts. No browser automation is needed for these API checks.
+Use `bun run test`, not bare `bun test`: the test script supplies the `react-server` condition so Bun can import modules protected by `server-only`. Integration checks start their own production server on port 3107 (`TEST_PORT` can override it), use a disposable database, and stop it afterward. They cover unauthenticated requests, forged cookies and roles, all four role boundaries, mutation validation, cross-origin rejection, session switching/logout, production demo-login gating, and persistence across server restarts. No browser automation is needed for these API checks.
 
 CI runs the same verification commands. There are no pre-commit hooks; run the checks before committing.

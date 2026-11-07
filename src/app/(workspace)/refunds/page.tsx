@@ -6,5 +6,5 @@ import { RefundDashboard } from "@/components/refund-dashboard";
 export default async function RefundsPage() {
   const user = authorize(await pageUser(), "refunds:read");
   return <RefundDashboard key={user.id} refunds={await getStore().refunds()} userId={user.id}
-    canCreate={can(user, "refunds:create")} canReview={can(user, "refunds:review")} />;
+    canCreate={can(user, "refunds:create")} canReview={can(user, "refunds:review")} canSignOff={can(user, "refunds:compliance-signoff")} />;
 }

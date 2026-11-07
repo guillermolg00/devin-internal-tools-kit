@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Headset, ClipboardCheck, Shield, LoaderCircle } from "lucide-react";
+import { ArrowRight, Headset, ClipboardCheck, Scale, Shield, LoaderCircle } from "lucide-react";
 import type { User } from "@/lib/permissions";
 
-const icons = { agent: Headset, reviewer: ClipboardCheck, admin: Shield };
-const descriptions = { agent: "Submit refunds and vendor results; review KYC as an analyst.", reviewer: "Review refunds and senior KYC cases; edit shared notes.", admin: "Inspect refunds, KYC, audit history, and the team directory." };
+const icons = { agent: Headset, reviewer: ClipboardCheck, compliance: Scale, admin: Shield };
+const descriptions = { agent: "Submit refunds and vendor results; review KYC as an analyst.", reviewer: "Review refunds and senior KYC cases; edit shared notes.", compliance: "Sign off refunds above $5,000 after reviewer approval checks.", admin: "Inspect refunds, KYC, audit history, and the team directory." };
 
 export function DemoLogin({ users }: { users: User[] }) {
   const router = useRouter();

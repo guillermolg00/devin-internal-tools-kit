@@ -5,6 +5,7 @@ describe("server authorization policy", () => {
   const expected = {
     agent: ["workspace:read", "refunds:read", "refunds:create", "kyc:read", "kyc:create", "kyc:review"],
     reviewer: ["workspace:read", "note:write", "refunds:read", "refunds:review", "kyc:read", "kyc:review", "kyc:senior-review"],
+    compliance: ["workspace:read", "refunds:read", "refunds:compliance-signoff", "kyc:read"],
     admin: ["workspace:read", "note:write", "users:read", "audit:read", "refunds:read", "kyc:read"],
   };
   for (const role of roles) {

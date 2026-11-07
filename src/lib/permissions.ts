@@ -1,4 +1,4 @@
-export const roles = ["agent", "reviewer", "admin"] as const;
+export const roles = ["agent", "reviewer", "compliance", "admin"] as const;
 export type Role = (typeof roles)[number];
 export type User = { id: string; name: string; email: string; role: Role };
 
@@ -10,6 +10,7 @@ export const permissions = {
   "refunds:read": { label: "View refunds", description: "Browse refund requests and review progress", roles },
   "refunds:create": { label: "Request a refund", description: "Submit a fixed customer, amount, and reason", roles: ["agent"] },
   "refunds:review": { label: "Review refunds", description: "Approve or reject another person's request", roles: ["reviewer"] },
+  "refunds:compliance-signoff": { label: "Compliance sign-off", description: "Sign off or decline refunds above $5,000 in addition to reviewer approvals", roles: ["compliance"] },
   "kyc:read": { label: "View KYC cases", description: "Browse verification details and complete case history", roles },
   "kyc:create": { label: "Submit KYC verification", description: "Record signup verification details from the vendor", roles: ["agent"] },
   "kyc:review": { label: "Review KYC cases", description: "Claim, approve, reject, or escalate customer verification", roles: ["agent", "reviewer"] },

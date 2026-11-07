@@ -1,6 +1,6 @@
 import "server-only";
 import { MutationInputError, type MutationDefinition, type MutationContext } from "./mutation";
-import { createRefund, reviewRefund } from "./refunds";
+import { createRefund, reviewRefund, signOffRefund } from "./refunds";
 import { createKyc, reviewKyc } from "./kyc";
 
 export const mutations = {
@@ -8,6 +8,7 @@ export const mutations = {
   "kyc.review": { permission: "kyc:review", tables: ["approval_requests", "approval_decisions", "kyc_cases", "kyc_events"], run: reviewKyc },
   "refunds.create": { permission: "refunds:create", tables: ["approval_requests", "refund_requests"], run: createRefund },
   "refunds.review": { permission: "refunds:review", tables: ["approval_requests", "approval_decisions"], run: reviewRefund },
+  "refunds.signoff": { permission: "refunds:compliance-signoff", tables: ["approval_requests", "approval_decisions"], run: signOffRefund },
   "workspace.note.update": {
     permission: "note:write",
     tables: ["workspace_note"],
