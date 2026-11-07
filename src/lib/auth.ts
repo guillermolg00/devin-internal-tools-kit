@@ -10,7 +10,9 @@ export const demoAuthEnabled = () => process.env.NODE_ENV !== "production" || pr
 export async function currentUser() {
   const jar = await cookies();
   if (!demoAuthEnabled()) return null;
-  return getStore().sessionUser(jar.get(SESSION_COOKIE)?.value);
+  const user = await getStore().sessionUser(jar.get(SESSION_COOKIE)?.value);
+  // Database rows are class instances; pages pass the user to Client Components, which only accept plain objects.
+  return user && { id: user.id, name: user.name, email: user.email, role: user.role };
 }
 
 export async function requirePermission(permission: Permission) {
